@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .domain.pipeline import find_swap_options
 from .domain.ranking import SwapOption
@@ -11,6 +12,10 @@ from .synth.generator import generate_pool
 
 app = FastAPI(title="Hostel Swap")
 PAGE = Path(__file__).parent / "index.html"
+ASSETS = Path(__file__).parents[2] / "assets"
+
+if ASSETS.is_dir():
+    app.mount("/assets", StaticFiles(directory=ASSETS), name="assets")
 
 
 def member(option: SwapOption, student_id: str) -> dict:

@@ -1,4 +1,4 @@
-![Tiet Logo](assets/tiet-logo.svg){ .tiet-logo }
+![Thapar Institute of Engineering and Technology](assets/Thapar-logo.png){ .tiet-logo }
 
 **UCS503: Software Engineering (Project)**  
 **TIET Patiala**
@@ -8,6 +8,8 @@
 **Author(s)**:
 
 Aabhas Khandelwal, CSED `<roll -at- thapar -dot- edu>`
+
+![A hostel at TIET](assets/hostel-m.png)
 
 ## Problem
 
@@ -37,6 +39,8 @@ The three options differ in kind, not just in score:
 
 An option is only labelled with one of these if it genuinely beats the
 others on that measure, so sometimes fewer than three are shown.
+
+![A double room](assets/room.png){ width=280 }
 
 ## Approach
 
