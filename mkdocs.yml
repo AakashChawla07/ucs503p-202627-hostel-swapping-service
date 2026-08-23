@@ -1,5 +1,5 @@
-site_name: "UCS503 : Software Engineering : Project Template"
-site_url: https://tiet-ucs503.github.io/ucs503p-202627odd-template
+site_name: "Hostel Room Swap Service"
+site_url: https://aabhask.github.io/ucs503p-202627-hostel-swapping-service
 
 plugins:
 - search
@@ -46,14 +46,14 @@ theme:
   logo: assets/tiet-logo.svg
   favicon: assets/favicon.png
 
-repo_url: https://github.com/tiet-ucs503/ucs503p-202627odd-template
-repo_name: ucs503p-202627odd-template
-copyright: "Copyright &copy; 2025 <a href='https://bvraghav.com/'>Raghav B. Venkataramaiyer</a> &lt;<code style='color:inherit; background:transparent'>bv.raghav</code>&gt;"
+repo_url: https://github.com/AabhasK/ucs503p-202627-hostel-swapping-service
+repo_name: ucs503p-202627-hostel-swapping-service
+copyright: "UCS503 Software Engineering Project &middot; TIET Patiala &middot; 2026-27 ODD"
 extra:
   social:
   - icon: fontawesome/brands/github
-    link: https://github.com/tiet-ucs503/ucs503p-202627odd-template
-    name: Git Repo for UCS503P Project Template
+    link: https://github.com/AabhasK/ucs503p-202627-hostel-swapping-service
+    name: Git Repo for the Hostel Room Swap Service
 
 extra_css:
   - assets/stylesheets/extra.css
