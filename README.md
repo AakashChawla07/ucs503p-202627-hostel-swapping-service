@@ -1,45 +1,40 @@
-# UCS503P Project Template
+# Hostel Room Swap Service
 
-This is a project template for UCS503P Project (2026-27
-ODD). 
+UCS503 Software Engineering project, TIET Patiala (2026-27 ODD).
 
-There are 3 reports in LaTeX format, namely *a*)
-Project Proposal, *b*) Project Report Prototype Stage,
-and *c*) Project Report Final -- each in their
-respective folders.
+Finds multi-party room swap chains so students stuck with the wrong
+hostel room can trade out of it, and returns options that differ in
+kind rather than a single ranked list.
 
-Journals are stacked under the folder `journals`, one
-folder for each team member.  A sample entry has been
-made for example.
+## Layout
 
-The source code is contained within the folder `code`.
+```
+code/hostelswap/domain   matching engine, no framework or db imports
+code/hostelswap/synth    synthetic pools for demos and benchmarks
+code/hostelswap/api.py   fastapi app
+db/schema.sql            supabase schema
+tests/                   pytest suite
+docs/                    mkdocs site, published from master
+journals/                weekly journals, one folder per member
+```
 
-The documentation is under folder `docs`.
+## Setup
 
-All other aspects of code organisation are left to the
-discretion of the user(s).
+``` shell
+python -m venv .venv
+.venv/Scripts/activate      # source .venv/bin/activate on linux
+pip install -e ".[dev]"
+pytest -q
+```
 
+## Running the prototype
+
+``` shell
+uvicorn hostelswap.api:app --reload
+```
 
 ## Docs
 
-As of now, the `docs` is just an organised collection
-of markdown (`md`) files.  But the build procedure is
-using [`mkdocs`](https://google.com/search?q=mkdocs)
-backend.  As a result, any commit into the `master`
-branch of github repository would result in CI/CD based
-build and deployment of the documentation including the
-journals.
-
-For a local DEV-version of the docs for viewing and
-testing, install the local env and issue the following
-command:
-
 ``` shell
 make docs
-```
-
-### Local `env` for `docs`
-
-``` shell
-
 ```
