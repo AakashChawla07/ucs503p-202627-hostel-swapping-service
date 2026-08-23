@@ -122,11 +122,12 @@ create table swap_proposals (
 
 create index swap_proposals_status_idx on swap_proposals (status, expires_at);
 
--- 9. swap_chain_members -- one row per participant, in cycle order
+-- 9. swap_chain_members -- one row per participant, in cycle order.
+-- One proposal is one chain: chains are disjoint and execute
+-- independently, so a drop-out cannot reach any other chain.
 create table swap_chain_members (
     id           uuid primary key default gen_random_uuid(),
     proposal_id  uuid not null references swap_proposals(id) on delete cascade,
-    chain_index  int  not null,
     position     int  not null,
     student_id   uuid not null references students(id),
     from_slot_id uuid not null references bed_slots(id),
@@ -134,7 +135,7 @@ create table swap_chain_members (
     match_value  numeric(5,4) not null,
     approval     approval_status not null default 'pending',
     responded_at timestamptz,
-    unique (proposal_id, chain_index, position)
+    unique (proposal_id, position)
 );
 
 create index swap_chain_members_student_idx on swap_chain_members (student_id, approval);
