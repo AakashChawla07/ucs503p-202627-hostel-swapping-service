@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Hostel Swap</title>
+<style>
+  body { font: 15px system-ui, sans-serif; margin: 0; background: #f5f5f7; color: #1a1a1a; }
+  header { border-bottom: 1px solid #ddd; }
+  .banner {
+    background: linear-gradient(rgba(90, 20, 15, .72), rgba(90, 20, 15, .72)),
+                url("/assets/hostel-m.png") center/cover;
+    color: #fff; padding: 22px 32px; display: flex; align-items: center; gap: 20px;
+  }
+  .banner img { height: 46px; background: #fff; padding: 6px 10px; border-radius: 4px; }
+  .banner p { margin: 4px 0 0; font-size: 13px; opacity: .85; }
+  .controls { background: #fff; padding: 14px 32px; }
+  h1 { margin: 0; font-size: 20px; }
+  label { margin-right: 16px; font-size: 13px; color: #555; }
+  input { width: 64px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
+  button { padding: 6px 16px; border: 0; border-radius: 4px; background: #2d5bd7; color: #fff; cursor: pointer; }
+  main { display: flex; gap: 16px; padding: 24px 32px; align-items: flex-start; flex-wrap: wrap; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; flex: 1 1 320px; }
+  .kind { padding: 12px 16px; border-bottom: 1px solid #eee; font-weight: 600; }
+  .stats { display: flex; gap: 20px; padding: 12px 16px; border-bottom: 1px solid #eee; font-size: 13px; }
+  .stats b { display: block; font-size: 18px; font-weight: 600; }
+  .stats span { color: #777; }
+  .chain { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+  .chain h3 { margin: 0 0 8px; font-size: 12px; color: #777; text-transform: uppercase; }
+  .move { padding: 6px 0; font-size: 13px; }
+  .move code { background: #f0f0f4; padding: 1px 5px; border-radius: 3px; }
+  .pct { float: right; font-weight: 600; }
+  .tags { margin-top: 3px; font-size: 12px; }
+  .got { color: #1a7a3c; margin-right: 8px; }
+  .missed { color: #b04a4a; }
+  .empty { padding: 32px; color: #777; }
+</style>
+
+<header>
+  <div class="banner">
+    <img src="/assets/Thapar-logo.png" alt="Thapar Institute of Engineering and Technology">
+    <div>
+      <h1>Hostel Room Swap Service</h1>
+      <p>UCS503 Software Engineering Project &middot; TIET Patiala</p>
+    </div>
+  </div>
+  <div class="controls">
+  <label>Students <input id="students" type="number" value="12"></label>
+  <label>Seed <input id="seed" type="number" value="23"></label>
+  <label>K <input id="k" type="number" value="30"></label>
+  <button onclick="load()">Find swaps</button>
+  </div>
+</header>
+
+<main id="out"></main>
+
+<script>
+const TITLES = {
+  best_overall:  "Best overall match",
+  fastest:       "Fastest to execute",
+  best_location: "Best location fit",
+};
+
+function moveHtml(m) {
+  const got    = m.got.length    ? `<span class="got">+ ${m.got.join(", ")}</span>` : "";
+  const missed = m.missed.length ? `<span class="missed">- ${m.missed.join(", ")}</span>` : "";
+  return `<div class="move">
+    <span class="pct">${m.match}%</span>
+    ${m.student} <code>${m.from}</code> &rarr; <code>${m.to}</code>
+    <div class="tags">${got}${missed}</div>
+  </div>`;
+}
+
+function cardHtml(o) {
+  const chains = o.chains.map((c, i) =>
+    `<div class="chain">
+       <h3>Chain ${i + 1} &middot; ${c.length} students</h3>
+       ${c.map(moveHtml).join("")}
+     </div>`).join("");
+  return `<div class="card">
+    <div class="kind">${TITLES[o.kind]}</div>
+    <div class="stats">
+      <div><b>${o.meanMatch}%</b><span>avg match</span></div>
+      <div><b>${o.longestChain}</b><span>longest chain</span></div>
+      <div><b>${o.locationMatch}%</b><span>location fit</span></div>
+    </div>
+    ${chains}
+  </div>`;
+}
+
+async function load() {
+  const q = new URLSearchParams({
+    students: students.value, seed: seed.value, k: k.value,
+  });
+  const options = await (await fetch("/api/options?" + q)).json();
+  out.innerHTML = options.length
+    ? options.map(cardHtml).join("")
+    : `<p class="empty">No swap found &mdash; nobody can be made better off
+       without making somebody worse off.</p>`;
+}
+
+load();
+</script>
