@@ -57,3 +57,25 @@ def test_no_hard_prefs_by_default():
         for student in pool.students
         for p in pool.preferences_of(student.id).preferences
     )
+
+
+def test_thapar_hostel_room_numbers():
+    pool = generate_pool(students=30, seed=6)
+    allowed_hostels = {"A", "B", "C", "D", "H", "J", "K"}
+
+    for room in pool.rooms.values():
+        hostel, room_no = room.id.split("-")
+        assert hostel in allowed_hostels
+        assert room_no == f"{room.floor}{int(room_no[1:]):02d}"
+        assert 1 <= room.floor <= 8
+        assert 1 <= int(room_no[1:]) <= 58
+
+
+def test_students_have_realistic_names():
+    pool = generate_pool(students=3, seed=1)
+
+    assert [student.name for student in pool.students] == [
+        "Aarav Sharma",
+        "Vivaan Singh",
+        "Aditya Mehta",
+    ]

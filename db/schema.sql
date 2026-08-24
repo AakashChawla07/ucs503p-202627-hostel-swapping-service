@@ -3,8 +3,10 @@
 
 create type direction as enum ('N', 'S', 'E', 'W');
 
+-- 'room' is a student naming one specific room; floor and direction are
+-- the fallbacks if they cannot get it.
 create type criterion as enum (
-    'hostel', 'floor', 'direction', 'washroom', 'room_type', 'roommate'
+    'room', 'hostel', 'floor', 'direction', 'washroom', 'room_type', 'roommate'
 );
 
 create type proposal_status as enum (

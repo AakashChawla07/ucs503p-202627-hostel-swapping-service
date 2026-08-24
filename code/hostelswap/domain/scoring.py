@@ -20,6 +20,8 @@ class Score:
 
 def _satisfies(preference: Preference, room: Room, occupants: tuple[str, ...]) -> bool:
     match preference.criterion:
+        case Criterion.ROOM:
+            return room.id == preference.value
         case Criterion.HOSTEL:
             return room.hostel == preference.value
         case Criterion.FLOOR:

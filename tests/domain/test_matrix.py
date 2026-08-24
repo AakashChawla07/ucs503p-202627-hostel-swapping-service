@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from hostelswap.domain.matrix import build_matrix
 from hostelswap.domain.models import Direction
@@ -36,9 +37,30 @@ def test_cost_is_negated_score():
     matrix = build_matrix(pool)
     row = matrix.student_ids.index("s1")
 
-    # s1 wants H9, so the H9 slot costs -1.0 and the H7 slot costs 0.0
-    assert matrix.costs[row][matrix.slot_ids.index("H9-201-a")] == -1.0
+    # s1 wants H9, so the H9 slot costs -1.0 and the H7 slot costs 0.0.
+    # Slots other than s1's own carry a tiny inertia penalty.
+    assert matrix.costs[row][matrix.slot_ids.index("H9-201-a")] == pytest.approx(-1.0)
     assert matrix.costs[row][matrix.slot_ids.index("H7-101-a")] == 0.0
+
+
+def test_staying_put_beats_an_equally_good_move():
+    # Both rooms suit s1 identically, so the solver must not shuffle them.
+    twin = room("H9-201", hostel="H7")
+    pool = make_pool(
+        [H7, twin],
+        {"s1": "H7-101-a", "s2": "H9-201-a"},
+        preferences={
+            "s1": wants("s1", Preference(Criterion.HOSTEL, "H7", weight=1.0)),
+            "s2": wants("s2"),
+        },
+    )
+
+    matrix = build_matrix(pool)
+    row = matrix.student_ids.index("s1")
+    here = matrix.costs[row][matrix.slot_ids.index("H7-101-a")]
+    there = matrix.costs[row][matrix.slot_ids.index("H9-201-a")]
+
+    assert here < there
 
 
 def test_hard_violation_is_inf():

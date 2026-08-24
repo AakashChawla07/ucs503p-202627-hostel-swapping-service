@@ -1,100 +1,155 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>Hostel Swap</title>
+<title>Hostel Room Swap Service</title>
 <style>
   body { font: 15px system-ui, sans-serif; margin: 0; background: #f5f5f7; color: #1a1a1a; }
-  header { border-bottom: 1px solid #ddd; }
   .banner {
-    background: linear-gradient(rgba(90, 20, 15, .72), rgba(90, 20, 15, .72)),
+    background: linear-gradient(rgba(90,20,15,.74), rgba(90,20,15,.74)),
                 url("/assets/hostel-m.png") center/cover;
-    color: #fff; padding: 22px 32px; display: flex; align-items: center; gap: 20px;
+    color: #fff; padding: 20px 32px; display: flex; align-items: center; gap: 18px;
   }
-  .banner img { height: 46px; background: #fff; padding: 6px 10px; border-radius: 4px; }
-  .banner p { margin: 4px 0 0; font-size: 13px; opacity: .85; }
-  .controls { background: #fff; padding: 14px 32px; }
-  h1 { margin: 0; font-size: 20px; }
-  label { margin-right: 16px; font-size: 13px; color: #555; }
-  input { width: 64px; padding: 4px 6px; border: 1px solid #ccc; border-radius: 4px; }
-  button { padding: 6px 16px; border: 0; border-radius: 4px; background: #2d5bd7; color: #fff; cursor: pointer; }
-  main { display: flex; gap: 16px; padding: 24px 32px; align-items: flex-start; flex-wrap: wrap; }
-  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; flex: 1 1 320px; }
-  .kind { padding: 12px 16px; border-bottom: 1px solid #eee; font-weight: 600; }
-  .stats { display: flex; gap: 20px; padding: 12px 16px; border-bottom: 1px solid #eee; font-size: 13px; }
-  .stats b { display: block; font-size: 18px; font-weight: 600; }
-  .stats span { color: #777; }
-  .chain { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
-  .chain h3 { margin: 0 0 8px; font-size: 12px; color: #777; text-transform: uppercase; }
-  .move { padding: 6px 0; font-size: 13px; }
-  .move code { background: #f0f0f4; padding: 1px 5px; border-radius: 3px; }
-  .pct { float: right; font-weight: 600; }
-  .tags { margin-top: 3px; font-size: 12px; }
-  .got { color: #1a7a3c; margin-right: 8px; }
-  .missed { color: #b04a4a; }
-  .empty { padding: 32px; color: #777; }
+  .banner img { height: 44px; background: #fff; padding: 6px 10px; border-radius: 4px; }
+  .banner h1 { margin: 0; font-size: 19px; }
+  .banner p { margin: 3px 0 0; font-size: 13px; opacity: .85; }
+  main { padding: 24px 32px; max-width: 1100px; }
+  .stats { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .stat { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 14px 18px; flex: 1 1 150px; }
+  .stat b { display: block; font-size: 26px; line-height: 1.1; }
+  .stat span { font-size: 12px; color: #666; }
+  .engine { font-size: 12px; color: #666; margin: 0 0 18px; }
+  .ctl { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; font-size: 13px; }
+  .ctl select { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; margin: 0 8px; }
+  .ctl em { color: #666; font-style: normal; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+  th { text-align: left; font-size: 12px; text-transform: uppercase; color: #666; padding: 10px 12px; border-bottom: 1px solid #ddd; }
+  td { padding: 9px 12px; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
+  tr:last-child td { border-bottom: 0; }
+  code { background: #f0f0f4; padding: 1px 6px; border-radius: 3px; }
+  .stay { color: #999; }
+  .up { color: #1a7a3c; font-weight: 600; }
+  .same { color: #888; }
+  .bar { display: inline-block; height: 6px; background: #d8d8de; border-radius: 3px; width: 70px; vertical-align: middle; margin-right: 8px; }
+  .bar i { display: block; height: 6px; background: #1a7a3c; border-radius: 3px; }
+  .tag { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; margin: 1px 3px 1px 0; background: #ececf1; color: #555; }
+  .tag.ok { background: #e3f2e8; color: #1a7a3c; }
+  .tag.no { background: #f7e6e6; color: #a34141; }
+  h2 { font-size: 14px; text-transform: uppercase; color: #666; margin: 28px 0 10px; }
+  .chain { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 0; margin-bottom: 10px; overflow: hidden; }
+  .chain h3 { margin: 0; padding: 9px 16px; background: #faf7f7; border-bottom: 1px solid #eee;
+              font-size: 12px; text-transform: uppercase; color: #7a3b33; letter-spacing: .03em; }
+  .step { display: grid; grid-template-columns: 1.4fr auto auto auto 60px; align-items: center;
+          gap: 10px; padding: 7px 16px; border-bottom: 1px solid #f4f4f4; font-size: 13px; }
+  .step:last-child { border-bottom: 0; }
+  .step .arrow { color: #b0524a; font-weight: 700; }
+  .step .pc { text-align: right; color: #1a7a3c; font-weight: 600; }
+  .schema { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+  .tbl { background: #fff; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+  .tbl h4 { margin: 0; padding: 8px 12px; background: #faf7f7; border-bottom: 1px solid #eee;
+            font-size: 13px; color: #7a3b33; display: flex; justify-content: space-between; }
+  .tbl h4 span { color: #999; font-weight: 400; }
+  .col { padding: 4px 12px; font-size: 12px; display: flex; justify-content: space-between; }
+  .col em { color: #999; font-style: normal; }
+  .err { background: #fff; border: 1px solid #d9a5a5; border-left: 4px solid #b04a4a;
+         border-radius: 6px; padding: 16px 20px; color: #7a2b2b; }
+  .loop { padding: 7px 16px; font-size: 12px; color: #888; background: #fbfbfc; }
 </style>
 
-<header>
-  <div class="banner">
-    <img src="/assets/Thapar-logo.png" alt="Thapar Institute of Engineering and Technology">
-    <div>
-      <h1>Hostel Room Swap Service</h1>
-      <p>UCS503 Software Engineering Project &middot; TIET Patiala</p>
-    </div>
+<div class="banner">
+  <img src="/assets/Thapar-logo.png" alt="Thapar Institute of Engineering and Technology">
+  <div>
+    <h1>Hostel Room Swap Service</h1>
+    <p>UCS503 Software Engineering Project &middot; TIET Patiala &middot; Team Axiom</p>
   </div>
-  <div class="controls">
-  <label>Students <input id="students" type="number" value="12"></label>
-  <label>Seed <input id="seed" type="number" value="23"></label>
-  <label>K <input id="k" type="number" value="30"></label>
-  <button onclick="load()">Find swaps</button>
-  </div>
-</header>
+</div>
 
-<main id="out"></main>
+<main id="out">Loading…</main>
 
 <script>
-const TITLES = {
-  best_overall:  "Best overall match",
-  fastest:       "Fastest to execute",
-  best_location: "Best location fit",
-};
+const pct = n => n + "%";
 
-function moveHtml(m) {
-  const got    = m.got.length    ? `<span class="got">+ ${m.got.join(", ")}</span>` : "";
-  const missed = m.missed.length ? `<span class="missed">- ${m.missed.join(", ")}</span>` : "";
-  return `<div class="move">
-    <span class="pct">${m.match}%</span>
-    ${m.student} <code>${m.from}</code> &rarr; <code>${m.to}</code>
-    <div class="tags">${got}${missed}</div>
-  </div>`;
+function row(s) {
+  const moved = s.newRoom && s.newRoom !== s.room;
+  const gain = s.after - s.before;
+  return `<tr>
+    <td>${s.name}</td>
+    <td><code>${s.room}</code></td>
+    <td>${s.asked.map(t => `<span class="tag">${t}</span>`).join("")}</td>
+    <td>${moved ? `<code>${s.newRoom}</code>` : `<span class="stay">stays</span>`}</td>
+    <td>${s.got.map(t => `<span class="tag ok">${t}</span>`).join("")}
+        ${s.missed.map(t => `<span class="tag no">${t}</span>`).join("")}</td>
+    <td><span class="bar"><i style="width:${s.after}%"></i></span>
+        <span class="${gain > 0 ? "up" : "same"}">${pct(s.before)} &rarr; ${pct(s.after)}</span></td>
+  </tr>`;
 }
 
-function cardHtml(o) {
-  const chains = o.chains.map((c, i) =>
-    `<div class="chain">
-       <h3>Chain ${i + 1} &middot; ${c.length} students</h3>
-       ${c.map(moveHtml).join("")}
-     </div>`).join("");
-  return `<div class="card">
-    <div class="kind">${TITLES[o.kind]}</div>
+async function load(k) {
+  k = k || 80;
+  let d;
+  try {
+    const res = await fetch("/api/demo?k=" + k);
+    if (!res.ok) throw new Error("/api/demo returned " + res.status);
+    d = await res.json();
+    if (!d.chains) throw new Error("server is running old code -- restart uvicorn");
+  } catch (err) {
+    out.innerHTML = `<div class="err"><b>Could not load the demo.</b><br>${err.message}
+      <br><br>Restart the server:<br><code>uvicorn hostelswap.api:app --reload</code></div>`;
+    return;
+  }
+  out.innerHTML = `
+    <div class="ctl">
+      <label>Murty alternatives explored (K)
+        <select onchange="load(this.value)">
+          ${[1, 5, 25, 80, 150].map(v =>
+            `<option value="${v}" ${v == k ? "selected" : ""}>${v}</option>`).join("")}
+        </select>
+      </label>
+      <em>Hungarian finds the best assignment; Murty searches K alternatives for one
+      that executes in shorter chains. Longest chain here: <b>${0}</b></em>
+    </div>`;
+  out.innerHTML = out.innerHTML.replace("<b>0</b>", "<b>" + Math.max(...d.chains.map(c => c.length)) + "</b>");
+  out.innerHTML += `
     <div class="stats">
-      <div><b>${o.meanMatch}%</b><span>avg match</span></div>
-      <div><b>${o.longestChain}</b><span>longest chain</span></div>
-      <div><b>${o.locationMatch}%</b><span>location fit</span></div>
+      <div class="stat"><b>${d.before}% &rarr; ${d.after}%</b><span>cohort preference satisfaction</span></div>
+      <div class="stat"><b>${d.improved}</b><span>students better off</span></div>
+      <div class="stat"><b>${d.perfect}</b><span>got every preference</span></div>
+      <div class="stat"><b>${d.worseOff}</b><span>made worse off</span></div>
     </div>
-    ${chains}
-  </div>`;
+    <p class="engine">${d.engine} &middot; ${d.students.length} students, hostel ${d.hostel} &middot; data from <b>${d.source}</b></p>
+
+    <table>
+      <tr><th>Student</th><th>Now in</th><th>Asked for</th><th>Moves to</th><th>Met / missed</th><th>Match</th></tr>
+      ${d.students.map(row).join("")}
+    </table>
+
+    <h2>Swap chains being executed</h2>
+    ${d.chains.map((c, i) => `
+      <div class="chain">
+        <h3>Cycle ${i + 1} &middot; ${c.length} students move together</h3>
+        ${c.map(m => `<div class="step">
+            <span>${m.name}</span>
+            <code>${m.from}</code>
+            <span class="arrow">&rarr;</span>
+            <code>${m.to}</code>
+            <span class="pc">${m.after}%</span>
+          </div>`).join("")}
+        <div class="loop">${c[c.length - 1].to} was vacated by ${c[0].name}, closing the cycle</div>
+      </div>`).join("")}`;
+}
+async function loadSchema() {
+  try {
+    const d = await (await fetch("/api/schema")).json();
+    if (!d.connected) return;
+    const el = document.createElement("div");
+    el.innerHTML = `<h2>Live database schema &middot; ${d.tables.length} tables</h2>
+      <div class="schema">${d.tables.map(t => `
+        <div class="tbl">
+          <h4>${t.table}<span>${t.rows} rows</span></h4>
+          ${t.columns.map(c =>
+            `<div class="col">${c.name}<em>${c.type}</em></div>`).join("")}
+        </div>`).join("")}</div>`;
+    out.appendChild(el);
+  } catch (e) { /* schema view is optional */ }
 }
 
-async function load() {
-  const q = new URLSearchParams({
-    students: students.value, seed: seed.value, k: k.value,
-  });
-  const options = await (await fetch("/api/options?" + q)).json();
-  out.innerHTML = options.length
-    ? options.map(cardHtml).join("")
-    : `<p class="empty">No swap found &mdash; nobody can be made better off
-       without making somebody worse off.</p>`;
-}
-
-load();
+load().then(loadSchema);
 </script>

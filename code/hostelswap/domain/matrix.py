@@ -10,6 +10,12 @@ from .scoring import Score, score
 
 INFEASIBLE = np.inf
 
+# Every preference is a property of the room, so moving a student to a
+# different bed in the same room changes nothing for them. Breaking ties
+# towards their current bed stops the solver shuffling people for no
+# gain, which otherwise shows up as a swap from a room to itself.
+INERTIA = 1e-9
+
 
 @dataclass(frozen=True)
 class CostMatrix:
@@ -48,9 +54,13 @@ def build_matrix(pool: SwapPool) -> CostMatrix:
             )
             cell = score(preferences, room, occupants)
             scores[(student_id, slot_id)] = cell
-            # The solver minimises, so negate; hard violations are ruled
-            # out rather than traded off.
-            costs[row, column] = -cell.value if cell.feasible else INFEASIBLE
+            if not cell.feasible:
+                costs[row, column] = INFEASIBLE
+                continue
+            # The solver minimises, so negate the match.
+            costs[row, column] = -cell.value
+            if slot_id != pool.current_slot_id(student_id):
+                costs[row, column] += INERTIA
 
     return CostMatrix(
         costs=costs,

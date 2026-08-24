@@ -7,6 +7,7 @@ from .models import Direction
 
 
 class Criterion(Enum):
+    ROOM = "room"
     HOSTEL = "hostel"
     FLOOR = "floor"
     DIRECTION = "direction"

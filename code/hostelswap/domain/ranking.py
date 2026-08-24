@@ -13,7 +13,9 @@ from .preferences import Criterion
 from .scoring import Score
 from .solver import Assignment
 
-LOCATION_CRITERIA = frozenset({Criterion.HOSTEL, Criterion.FLOOR, Criterion.DIRECTION})
+LOCATION_CRITERIA = frozenset(
+    {Criterion.ROOM, Criterion.HOSTEL, Criterion.FLOOR, Criterion.DIRECTION}
+)
 
 
 class OptionKind(Enum):
