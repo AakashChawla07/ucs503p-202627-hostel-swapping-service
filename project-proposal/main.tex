@@ -4,24 +4,19 @@
 \usepackage{enumitem}
 \usepackage{graphicx}
 \usepackage{xcolor}
+\usepackage{booktabs}
 
-% -----------------------------------------------------
-% bvraghav-tiet-ucs503p-article.sty
-% -----------------------------------------------------
-
-% Variable: Lab Instructor
-\makeatletter \newcommand{\BvrSetLabInstructor}[1]{%
+\makeatletter \makeatletter \newcommand{\BvrSetLabInstructor}[1]{%
   \gdef\Bvr@LabInstructor{#1}}
-% default
+
 \newcommand{\Bvr@LabInstructor}{Dr. Raghav %
   B. Venkataramaiyer}
-% public accessor
+
 \newcommand{\BvrLabInstructorValue}{\Bvr@LabInstructor}
 \makeatother
 
-% Add subtitle
 \usepackage{titling}
-% -- Set title bold
+
 \pretitle{\begin{center}\bfseries\fontsize{18bp}{18bp}\selectfont}
 \makeatletter
 \newcommand{\BvrSubtitle}[1]{%
@@ -32,30 +27,32 @@
 }
 \makeatother
 
-% Hints in the section title(s)
 \newcommand{\BvrHint}[1]{%
   {\normalfont\normalsize\itshape\hfill #1}}
 
-% -----------------------------------------------------
 
-\title{Grievance-Resolution System for a Tier-2/3 City}
+\title{Hostel Room Swapping Service}
 
 \BvrSetLabInstructor{Dr. Raghav B. Venkataramaiyer}
 
 \BvrSubtitle{%
   Project Proposal for UCS503P  \\
   Submitted to: \BvrLabInstructorValue \\ \bfseries
-  Thapar Institute of Engineering and Technology% 
+  Thapar Institute of Engineering and Technology%
 }
 
 \author{
-  Vidya Vaidyanathan, CSED%
-  \thanks{Roll No: \texttt{1024030xxx}, %
-    Email: \texttt{vvaidhanathan\_be24\@thapar.edu}}
-  \and 
-  Bhanurekha Ganesan, CSED%
-  \thanks{Roll No: \texttt{1024030xxx}, %
-    Email: \texttt{bganesan\_be24\@thapar.edu}}
+  Aabhas Khandelwal, CSED%
+  \thanks{Roll No: \texttt{1024030673}, %
+    Email: \texttt{akhandelwal2\_be24\@thapar.edu}}
+  \and
+  Aakash Chawla, CSED%
+  \thanks{Roll No: \texttt{1024031097}, %
+    Email: \texttt{achawla1\_be24\@thapar.edu}}
+  \and
+  Joy Soni, CSED%
+  \thanks{Roll No: \texttt{1024030674}, %
+    Email: \texttt{jsoni\_be24\@thapar.edu}}
 }
 
 \date{\today}
@@ -65,178 +62,287 @@
 
 \section{Higher-order goal%
   \BvrHint{\ldots secondary framing}}
-This project aims to improve sustainable urban
-governance by reducing the time and effort required to
-resolve citizen issues. While the topic is broader than
-any single municipality, the immediate engineering
-objective is to translate \emph{efficient public
-  service delivery} into a measurable, deployable
-software solution.
+Make better use of hostel rooms that already exist.
+Every semester students live in rooms that suit them
+poorly while, in the same hostel, someone would gladly
+take that room and give up theirs. Fixing this needs no
+construction --- only visibility and coordination.
 
 \section{Time-to-value %
 \BvrHint{\ldots primary heuristic}}
 \begin{itemize}[leftmargin=0.7cm]
-    \item We will deliver meaningful increments quickly by prototyping the core user workflow and validating it with users within a short iteration window.
-    \item We will prioritize fast feedback over perfection by using weekly iterations (and targeting CI-backed automation early) to reduce release friction.
-    \item Success is defined by what can be delivered and measured in the first iteration, then improved based on user feedback.
+    \item The matching engine was built and demonstrated
+      end to end on synthetic data before any database
+      existed, so the core proposition was validated in
+      the first iteration.
+    \item The domain layer has no framework or database
+      dependency, so the full test suite runs in about
+      two seconds on every push and a working
+      demonstration is always available.
+    \item Success is measured, not asserted: the gain in
+      cohort preference satisfaction per matching round.
 \end{itemize}
 
 \section{Problem Statement}
-Citizens in a tier-2/3 Indian city face delays and uncertainty when reporting local issues (e.g., streetlight outages, water leakage, garbage accumulation, road potholes). Common pain points include:
+Students are allotted rooms they did not choose --- wrong
+floor, wrong direction, away from friends. They are
+willing to move. The obstacle is visibility, not
+willingness.
 \begin{itemize}[leftmargin=0.7cm]
-    \item \textbf{Fragmentation:} complaints are often made via multiple channels (calls, social media, paper forms), causing lost context.
-    \item \textbf{Low transparency:} citizens cannot easily see the status of their complaint (e.g., ``received'', ``assigned'', ``in progress'', ``resolved'').
-    \item \textbf{Slow coordination:} departments/field teams lack a unified, trackable workflow with clear ownership.
-    \item \textbf{Poor data quality:} duplicate or incomplete reports force rework and extend resolution time.
+    \item \textbf{Pairwise swaps rarely work.} A direct
+      exchange needs two students each to want exactly
+      what the other holds. A three- or four-way
+      rotation usually exists, but no participant can
+      see it from inside.
+    \item \textbf{No directory of intent.} Nothing
+      records who wants to move or where, so willingness
+      stays invisible.
+    \item \textbf{Informal coordination does not scale.}
+      A group chat surfaces a few offers; it cannot
+      search a hostel for a closed exchange cycle.
+    \item \textbf{No memory.} The same negotiation
+      restarts every semester.
 \end{itemize}
 
-\textbf{Why this matters now (contextual relevance):} In an urban setting with limited staff bandwidth, even small process improvements can noticeably reduce resolution delays and repeated submissions.
+\textbf{Contextual relevance:} Hostel A alone has eight
+floors of roughly 58 rooms. Possible exchanges grow far
+faster than any student or warden can enumerate, and the
+cost of missing them is borne by students for a full
+academic year.
 
 \section{Proposed Solution %
 \BvrHint{\ldots Software Proposition}}
-\subsection{Overview}
-Build a \textbf{web-based} ``Grievance-to-Resolution'' system with the following components:
-\begin{itemize}[leftmargin=0.7cm]
-    \item \textbf{Citizen submission portal:} users submit an issue with photo (optional), category, and locality/ward.
-    \item \textbf{Automated triage:} basic duplicate detection and completeness checks.
-    \item \textbf{Department workflow:} assign issues to relevant department/team and update statuses.
-    \item \textbf{Status transparency:} citizens track status and receive notifications when resolved.
-    \item \textbf{Admin/ops dashboard:} performance summaries (resolution time, backlog).
-\end{itemize}
-
-\subsection{Core workflow}
+A web service that holds every current allocation and
+every stated preference, and computes the exchange
+cycles hidden inside them.
 \begin{enumerate}[leftmargin=0.7cm]
-    \item Citizen creates a complaint and receives a complaint ID immediately.
-    \item System validates completeness and suggests possible duplicates (lightweight similarity on text/category and approximate location).
-    \item Department staff update status (Received $\rightarrow$ Assigned $\rightarrow$ In Progress $\rightarrow$ Resolved).
-    \item Citizen views status updates and resolution notes.
+    \item A student names one specific room. If it
+      cannot be obtained, the request falls back to that
+      room's floor, then its direction.
+    \item The service builds a students $\times$ rooms
+      cost matrix and solves for the allocation of
+      maximum total satisfaction.
+    \item That allocation is decomposed into independent
+      exchange cycles; any cycle leaving a participant
+      worse off is discarded.
+    \item Each surviving cycle is issued as a proposal.
+      All members approve, or it lapses.
+    \item On full approval the exchange executes and new
+      allocation rows are appended --- history is never
+      rewritten.
 \end{enumerate}
-
-\subsection{Operational constraints for an educational, tier-2/3 setting}
-\begin{itemize}[leftmargin=0.7cm]
-    \item Keep the solution usable on low-to-mid range devices via responsive web design.
-    \item Avoid dependence on advanced research algorithms; focus on workflow, automation, and system correctness.
-    \item Design for deployability using common web hosting and managed databases.
-\end{itemize}
+Each participant is shown their new room, the resulting
+match percentage, and exactly which preferences were met
+and which were not.
 
 \section{Solution Approach %
 \BvrHint{\ldots Engineering focus}}
-This is an engineering course project, so we focus on scalable administrative and workflow aspects rather than novel algorithm research.
+We assemble mature engines rather than invent
+algorithms. The engineering contribution is the
+modelling, and the feasibility layer separating
+allocations that are mathematically optimal from those
+students would actually accept.
 
-\subsection{Duplicate/quality assistance %
-\BvrHint{\ldots non-research}}
-Duplicate detection will be heuristic-based:
-\begin{itemize}[leftmargin=0.7cm]
-    \item Normalize text (category + short description keywords).
-    \item Use a simple similarity measure (e.g., token overlap / TF-IDF cosine with threshold) without claiming state-of-the-art.
-    \item Show top candidate duplicates to staff for decision; never fully auto-delete or auto-reject.
-\end{itemize}
+\subsection{Key modelling observation}
+The pool is \emph{closed}: the only rooms available are
+those the participants already hold. So any solution is
+a \textbf{permutation} of students over rooms, and every
+permutation decomposes uniquely into disjoint cycles.
+The exchange chains are therefore not searched for
+separately --- they are already inside the allocation and
+are simply read out. A 2-cycle is a direct swap; a
+3-cycle is a three-way rotation. Because cycles are
+disjoint, each executes independently, so a participant
+withdrawing from one provably cannot affect any other.
 
-\subsection{Web architecture %
-\BvrHint{\ldots web-based solution}}
-A typical 3-tier web architecture:
-\begin{itemize}[leftmargin=0.7cm]
-    \item \textbf{Frontend:} responsive UI for citizens and staff (status pages, submission form, dashboard).
-    \item \textbf{Backend API:} authentication, complaint submission, status transitions, assignment logic.
-    \item \textbf{Database:} store users, complaints, status history, attachments metadata.
-\end{itemize}
+\subsection{Four modules %
+\BvrHint{\ldots mature engines}}
+\begin{enumerate}[leftmargin=0.7cm]
+    \item \textbf{Preference scoring.} Match percentage
+      is the fraction of a student's preference weight a
+      room satisfies. Hard constraints rule a room out
+      rather than lowering its score.
+    \item \textbf{Assignment optimisation.} The
+      \textbf{Hungarian algorithm}
+      (\texttt{scipy.optimize.linear\_sum\_assignment})
+      solves the matrix in $O(n^3)$.
+    \item \textbf{Alternative generation.}
+      \textbf{Murty's algorithm} yields the $K$ best
+      allocations by forbidding an edge of the best and
+      re-solving. This is a correctness requirement: the
+      single optimal allocation is often unexecutable,
+      and the alternatives are where a workable exchange
+      is found.
+    \item \textbf{Swap feasibility.} Cycle decomposition
+      plus a Pareto filter, discarding any cycle where a
+      participant ends up worse off than today.
+\end{enumerate}
 
-\subsection{CI/CD and fast delivery enabler}
-CI/CD will be used to:
-\begin{itemize}[leftmargin=0.7cm]
-    \item Automatically build and run tests on every change.
-    \item Produce repeatable deployment artifacts to staging.
-    \item Enable safe and frequent releases of incremental features.
-\end{itemize}
+\subsection{Alternatives rejected}
+\textbf{Gale--Shapley} assumes two-sided matching where
+both sides rank each other; rooms hold no preferences
+over students, so half the algorithm has no input.
+\textbf{Top Trading Cycles} fits the exchange shape but
+operates on a strict ranked list, and cannot represent
+preferences weighted across several attributes.
+
+\subsection{Architecture and CI/CD}
+A \textbf{React} frontend over a stateless
+\textbf{FastAPI} backend and managed \textbf{PostgreSQL}
+(Supabase, nine tables). The allocation table is
+append-only, enforced by a database trigger rather than
+application convention. The domain layer imports no
+framework and no database driver, so it is testable with
+no infrastructure at all. GitHub Actions runs the full
+suite on every push across Python 3.10--3.12 and
+republishes the documentation on merge.
 
 \section{Evaluation Criterion %
 \BvrHint{\ldots measurable and attributable}}
-We define success using measurable metrics tied to the core workflow.
 
-\subsection{Primary evaluation metric}
-\textbf{Time-to-acknowledgement (TTA):} time between complaint submission and ``Received/Assigned'' status creation in the system.
-\begin{itemize}[leftmargin=0.7cm]
-    \item Target: median TTA $\le$ 2 hours during pilot window.
-    \item Attribution: measured from database timestamps (submission vs. first status update by staff).
-\end{itemize}
+\subsection{Primary metric}
+\textbf{Cohort preference satisfaction:} the mean
+weighted preference score across \emph{all} participants
+--- not only those who move --- before and after a
+matching round. Both figures come from the same scoring
+function over the same stored preferences, so the
+difference is attributable entirely to the reallocation.
 
-\subsection{Secondary evaluation metrics}
-\begin{itemize}[leftmargin=0.7cm]
-    \item \textbf{Resolution time reduction:} reduce time-to-resolved compared to baseline process (even if baseline is collected via survey).
-    \item \textbf{Duplicate rate:} percentage of complaints flagged as duplicates and resolved without rework.
-    \item \textbf{User clarity:} citizen-reported clarity of status using a simple 1--5 feedback question.
-    \item \textbf{Reliability:} availability of staging/production for login and submission during business hours (e.g., $\ge$ 99\% uptime in pilot).
-\end{itemize}
+On a 30-student cohort in hostel A, satisfaction rose
+from \textbf{11\%} to \textbf{77\%}.
 
-\subsection{Pilot validation plan %
-\BvrHint{\ldots high-level}}
-\begin{itemize}[leftmargin=0.7cm]
-    \item Recruit 10--20 pilot users (citizens) and 3--5 staff roles (department simulation if real staff unavailable).
-    \item Compare metrics before/after within the iteration window by logging baseline estimates via short interviews or existing process observations.
-\end{itemize}
+Measuring across everyone is deliberate: averaging over
+movers alone would reward a two-person swap where both
+reach 100\% over a 28-person rotation that lifts the
+whole hostel.
+
+\subsection{Secondary metrics}
+\begin{table}[h]
+\centering
+\begin{tabular}{lr}
+\toprule
+\textbf{Metric} & \textbf{Result} \\
+\midrule
+Received the exact room they named & 20 of 30 \\
+Received at least their requested floor & 28 of 30 \\
+Received at least their requested direction & 23 of 30 \\
+Participants left worse off & \textbf{0 of 30} \\
+Longest chain needing simultaneous approval & 11 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Nobody worse off} is a guarantee, not an
+observation: a cycle is only offered if every member is
+at least as well off as before and one is strictly
+better. \textbf{Chain length} matters operationally ---
+an exchange needing 28 simultaneous approvals is far
+more fragile than three of 11, 10 and 7. Raising $K$ cut
+the longest chain from 28 to 11 \emph{at identical
+satisfaction}, which is precisely what Murty's algorithm
+contributes.
+
+\subsection{Pilot validation}
+Collect real preferences from 20--40 volunteers in one
+hostel, run a matching round, and report before/after
+satisfaction against an honest baseline: how many direct
+pairwise swaps those same students could arrange
+informally.
 
 \section{Scalability %
 \BvrHint{\ldots with foresight}}
-The proposition should scale in both theoretical and practical senses.
-
 \begin{enumerate}[leftmargin=0.7cm]
-    \item \textbf{Scalable (theoretically):} The system should support growth in number of complaints and concurrent dashboard usage by:
-    \begin{itemize}[leftmargin=0.7cm]
-        \item decoupling components (frontend/backend),
-        \item enabling pagination and indexing for common queries,
-        \item using stateless API design.
-    \end{itemize}
-    
-    \item \textbf{Operationally deployable (practically):} The system should run on common web hosting:
-    \begin{itemize}[leftmargin=0.7cm]
-        \item managed database,
-        \item containerized or platform-hosted deployment,
-        \item CI/CD pipeline for staging/production.
-    \end{itemize}
+    \item \textbf{Theoretically:} Hungarian is $O(n^3)$
+      and Murty's adds a bounded number of further
+      solves. A 30-student pool matches in under
+      100~ms, a 100-student pool in under a second.
+      Matching also partitions naturally --- each hostel
+      solved independently --- so problem size stays
+      bounded as campus participation grows.
+    \item \textbf{Operationally deployable:} the API is
+      stateless over managed PostgreSQL, so it scales
+      horizontally behind a load balancer on a standard
+      platform host, with CI/CD producing repeatable
+      deployments.
 \end{enumerate}
 
 \section{Engine availability heuristic}
-A mature set of ``engines'' (tooling/services) is available to implement this as a web-based project:
-\begin{itemize}[leftmargin=0.7cm]
-    \item Web framework for REST APIs and templated/reactive pages.
-    \item Managed relational or document database.
-    \item Authentication approach (token-based or session-based).
-    \item Object storage for optional attachments (or local storage for pilot).
-    \item Test framework for unit/integration tests.
-    \item CI runner and staging deployment target.
-\end{itemize}
-We will use these mature components to focus on workflow design, correctness, and measurement rather than inventing new infrastructure.
+Every component exists as a mature engine:
+\textbf{SciPy} (Hungarian), \textbf{NumPy} (cost
+matrix), \textbf{React} (frontend), \textbf{FastAPI}
+(REST API), \textbf{Supabase} (managed PostgreSQL and
+auth), \textbf{pytest} and \textbf{GitHub Actions}
+(tests and CI). Murty's algorithm is about sixty lines
+on top of the SciPy solver and introduces no new
+mathematics --- it repeatedly forbids one assignment edge
+and re-solves. Nothing here depends on unpublished or
+unproven work.
 
 \section{Project scope and deliverables %
 \BvrHint{\ldots iteration-friendly}}
-\subsection{Initial deliverable %
-\BvrHint{\ldots first iteration}}
+\subsection{Initial deliverable}
 \begin{itemize}[leftmargin=0.7cm]
-    \item Citizen submission form + complaint ID generation
-    \item Staff workflow: update status and assignment
-    \item Citizen status page: view timeline/history
-    \item Basic logging and timestamps for TTA measurement
-    \item CI: build + backend unit tests + linting
-    \item CD to staging with a single command or pipeline job
+    \item Weighted preference model with ordered
+      fallbacks: room, then floor, then direction.
+    \item Matching engine: cost matrix, Hungarian,
+      Murty's $K$-best, cycle decomposition, Pareto
+      filter.
+    \item Approval state machine: proposal, approval,
+      execution, rejection, expiry, withdrawal.
+    \item Web view showing the allocation table, the
+      computed match, and the cycles being executed.
+    \item Schema with append-only allocation history.
+    \item CI running the suite on three Python versions
+      on every push.
 \end{itemize}
 
 \subsection{Subsequent deliverables}
 \begin{itemize}[leftmargin=0.7cm]
-    \item Lightweight duplicate suggestions with staff review
-    \item Notification layer (email/SMS optional in later iteration; can start with in-app notifications)
-    \item Admin dashboard for metrics and backlog
-    \item Improved search/filtering and indexed queries for scale readiness
+    \item React frontend with student login and real
+      preference collection, replacing the seeded
+      demonstration cohort.
+    \item Persisted proposals and approvals surviving
+      restart.
+    \item Shared rooms, with mutual roommate requests
+      merged before solving.
+    \item Warden view for oversight and for committing
+      an approved round.
 \end{itemize}
 
 \section{Risks and mitigations}
 \begin{itemize}[leftmargin=0.7cm]
-    \item \textbf{Data privacy / consent:} minimize collected data; keep attachments optional; store only what is needed.
-    \item \textbf{Staff adoption:} provide an easy UI for status updates; keep workflow steps minimal; include shortcuts.
-    \item \textbf{Evaluation measurement ambiguity:} instrument timestamps and define clear status transitions before development begins.
-    \item \textbf{Operational issues in pilot:} use staging early; ensure CI/CD produces repeatable deployments.
+    \item \textbf{Participation:} cycles need enough
+      participants. Run per hostel, where students
+      already coordinate, and report honestly when no
+      exchange exists.
+    \item \textbf{Withdrawal mid-approval:} mitigated
+      structurally --- cycles are disjoint, so a
+      withdrawal cancels one and cannot touch the
+      others; preferring several short cycles over one
+      long one shrinks the blast radius further.
+    \item \textbf{Gaming:} hard constraints only remove
+      infeasible rooms and earn no score, so
+      exaggerating them cannot improve a match.
+    \item \textbf{Administrative acceptance:} exchanges
+      remain proposals until approved, and the
+      append-only history is a complete, non-rewritable
+      audit trail.
+    \item \textbf{Privacy:} preferences and allocations
+      only; nothing beyond what matching requires.
 \end{itemize}
 
 \section{Summary}
-This project proposes a deployable web platform to reduce grievance handling delays in a tier-2/3 city context. It meets the course criteria by emphasizing time-to-value through rapid iterations, implementing CI/CD to support frequent safe releases, and using measurable evaluation criteria (especially time-to-acknowledgement). It remains focused on engineering workflow and scalability readiness rather than research-driven novelty.
+This project proposes a deployable web service that
+finds multi-party room exchanges no participant could
+discover alone. It meets the course criteria through
+time-to-value --- a working, measured engine in the first
+iteration --- CI/CD that keeps feedback at seconds rather
+than days, and a measurable evaluation criterion in
+cohort preference satisfaction, which rose from 11\% to
+77\% with no participant left worse off. It uses only
+mature engines; the engineering contribution is
+modelling the hostel as a closed permutation problem and
+the feasibility layer that separates optimal allocations
+from acceptable ones.
 
 \end{document}
