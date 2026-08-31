@@ -12,6 +12,12 @@ class Direction(Enum):
     W = "W"
 
 
+class WashroomType(Enum):
+    ATTACHED = "attached"
+    COMMON = "common"
+    SHARING = "sharing"
+
+
 @dataclass(frozen=True)
 class Student:
     id: str
@@ -24,8 +30,15 @@ class Room:
     hostel: str
     floor: int
     direction: Direction
-    has_attached_washroom: bool
+    washroom_type: WashroomType
     capacity: int
+    ac: bool = False
+
+    @property
+    def room_type_code(self) -> str:
+        # e.g. "2SAC" / "2SNAC" -- always derived from capacity + ac so it
+        # can never drift from the columns it is made of.
+        return f"{self.capacity}S{'A' if self.ac else 'NA'}C"
 
 
 @dataclass(frozen=True)

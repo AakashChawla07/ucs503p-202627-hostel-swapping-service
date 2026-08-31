@@ -55,7 +55,7 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
-
+.dual-graph
 # Translations
 *.mo
 *.pot

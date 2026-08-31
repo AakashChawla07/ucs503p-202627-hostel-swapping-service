@@ -29,9 +29,9 @@ def _satisfies(preference: Preference, room: Room, occupants: tuple[str, ...]) -
         case Criterion.DIRECTION:
             return room.direction == preference.value
         case Criterion.WASHROOM:
-            return room.has_attached_washroom == preference.value
+            return room.washroom_type.value == preference.value
         case Criterion.ROOM_TYPE:
-            return room.capacity == preference.value
+            return room.room_type_code == preference.value
         case Criterion.ROOMMATE:
             return preference.value in occupants
     raise ValueError(f"unhandled criterion: {preference.criterion}")
