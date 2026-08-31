@@ -1,6 +1,6 @@
 import pytest
 
-from hostelswap.domain.models import Direction, Room
+from hostelswap.domain.models import Direction, Room, WashroomType
 from hostelswap.domain.preferences import Criterion, Preference, PreferenceSet
 from hostelswap.domain.scoring import score
 
@@ -9,7 +9,7 @@ ROOM = Room(
     hostel="H7",
     floor=1,
     direction=Direction.N,
-    has_attached_washroom=True,
+    washroom_type=WashroomType.ATTACHED,
     capacity=2,
 )
 
@@ -44,10 +44,10 @@ def test_no_prefs_scores_one():
         (Preference(Criterion.FLOOR, 2, weight=1.0), False),
         (Preference(Criterion.DIRECTION, Direction.N, weight=1.0), True),
         (Preference(Criterion.DIRECTION, Direction.S, weight=1.0), False),
-        (Preference(Criterion.WASHROOM, True, weight=1.0), True),
-        (Preference(Criterion.WASHROOM, False, weight=1.0), False),
-        (Preference(Criterion.ROOM_TYPE, 2, weight=1.0), True),
-        (Preference(Criterion.ROOM_TYPE, 3, weight=1.0), False),
+        (Preference(Criterion.WASHROOM, "attached", weight=1.0), True),
+        (Preference(Criterion.WASHROOM, "common", weight=1.0), False),
+        (Preference(Criterion.ROOM_TYPE, "2SNAC", weight=1.0), True),
+        (Preference(Criterion.ROOM_TYPE, "2SAC", weight=1.0), False),
     ],
 )
 def test_room_criteria(preference, expected):

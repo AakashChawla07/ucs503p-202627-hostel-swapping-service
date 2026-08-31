@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Sign in &middot; Hostel Room Swap Service</title>
+<style>
+  body { font: 15px system-ui, sans-serif; margin: 0; background: #f5f5f7; color: #1a1a1a; }
+  .banner {
+    background: linear-gradient(rgba(90,20,15,.74), rgba(90,20,15,.74)),
+                url("/assets/hostel-m.png") center/cover;
+    color: #fff; padding: 20px 32px; display: flex; align-items: center; gap: 18px;
+  }
+  .banner img { height: 44px; background: #fff; padding: 6px 10px; border-radius: 4px; }
+  .banner h1 { margin: 0; font-size: 19px; }
+  .banner p { margin: 3px 0 0; font-size: 13px; opacity: .85; }
+  main { padding: 60px 32px; max-width: 380px; margin: 0 auto; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 24px; }
+  .card h2 { margin: 0 0 16px; font-size: 16px; }
+  label { display: block; font-size: 13px; color: #555; margin: 12px 0 4px; }
+  input { width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #ccc;
+          border-radius: 4px; font-size: 14px; }
+  button { margin-top: 18px; width: 100%; padding: 10px; border: 0; border-radius: 4px;
+           background: #7a2b2b; color: #fff; font-size: 14px; cursor: pointer; }
+  button:hover { background: #6a2222; }
+  .err { color: #a34141; font-size: 13px; margin-top: 10px; min-height: 16px; }
+</style>
+
+<div class="banner">
+  <img src="/assets/Thapar-logo.png" alt="Thapar Institute of Engineering and Technology">
+  <div>
+    <h1>Hostel Room Swap Service</h1>
+    <p>UCS503 Software Engineering Project &middot; TIET Patiala &middot; Team Axiom</p>
+  </div>
+</div>
+
+<main>
+  <div class="card">
+    <h2>Sign in</h2>
+    <form id="form">
+      <label for="identifier">Roll number or email</label>
+      <input id="identifier" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+      <div class="err" id="err"></div>
+    </form>
+  </div>
+</main>
+
+<script>
+document.getElementById("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = document.getElementById("err");
+  err.textContent = "";
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      identifier: document.getElementById("identifier").value.trim(),
+      password: document.getElementById("password").value,
+    }),
+  });
+  if (!res.ok) {
+    err.textContent = res.status === 401 ? "Wrong roll number/email or password." : "Sign-in failed.";
+    return;
+  }
+  const d = await res.json();
+  window.location.href = d.role === "admin" ? "/admin" : "/student";
+});
+</script>

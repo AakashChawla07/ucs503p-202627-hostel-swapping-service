@@ -33,10 +33,10 @@ def test_the_app_falls_back_to_the_fixed_table():
     "criterion,raw,expected",
     [
         (Criterion.FLOOR, "4", 4),
-        (Criterion.ROOM_TYPE, "2", 2),
+        (Criterion.ROOM_TYPE, "2SAC", "2SAC"),
         (Criterion.DIRECTION, "N", Direction.N),
-        (Criterion.WASHROOM, "true", True),
-        (Criterion.WASHROOM, "false", False),
+        (Criterion.WASHROOM, "attached", "attached"),
+        (Criterion.WASHROOM, "common", "common"),
         (Criterion.ROOM, "A-433", "A-433"),
     ],
 )
