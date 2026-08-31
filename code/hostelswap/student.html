@@ -1,0 +1,321 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>My Swap &middot; Hostel Room Swap Service</title>
+<style>
+  body { font: 15px system-ui, sans-serif; margin: 0; background: #f5f5f7; color: #1a1a1a; }
+  .banner {
+    background: linear-gradient(rgba(90,20,15,.74), rgba(90,20,15,.74)),
+                url("/assets/hostel-m.png") center/cover;
+    color: #fff; padding: 20px 32px; display: flex; align-items: center; gap: 18px;
+  }
+  .banner img { height: 44px; background: #fff; padding: 6px 10px; border-radius: 4px; }
+  .banner h1 { margin: 0; font-size: 19px; }
+  .banner p { margin: 3px 0 0; font-size: 13px; opacity: .85; }
+  .banner .who { margin-left: auto; text-align: right; font-size: 13px; }
+  .banner button { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.4);
+                    border-radius: 4px; padding: 5px 10px; cursor: pointer; margin-top: 4px; }
+  main { padding: 24px 32px; max-width: 900px; margin: 0 auto; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; color: #666; }
+  .row { display: flex; gap: 24px; flex-wrap: wrap; }
+  .kv { font-size: 14px; }
+  .kv b { display: block; font-size: 20px; }
+  .kv span { color: #888; font-size: 12px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .badge.open { background: #e3f2e8; color: #1a7a3c; }
+  .badge.locked, .badge.running { background: #fdf1de; color: #a3701a; }
+  .badge.completed { background: #e6ecf7; color: #2b4b8a; }
+  .badge.draft, .badge.none { background: #ececf1; color: #666; }
+  .toggle { margin-top: 12px; }
+  .toggle button { padding: 8px 16px; border-radius: 4px; border: 1px solid #ccc; background: #fff;
+                    cursor: pointer; font-size: 13px; }
+  .toggle button.active { background: #1a7a3c; color: #fff; border-color: #1a7a3c; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .field label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+  .field select, .field input { width: 100%; box-sizing: border-box; padding: 6px 8px;
+                                 border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+  .save { margin-top: 16px; padding: 8px 18px; border: 0; border-radius: 4px; background: #7a2b2b;
+          color: #fff; cursor: pointer; font-size: 13px; }
+  .save:disabled { background: #ccc; cursor: default; }
+  .muted { color: #888; font-size: 13px; }
+  .chain { background: #faf7f7; border: 1px solid #eee; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+  .chain h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; color: #7a3b33; }
+  .step { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 13px; }
+  .step .arrow { color: #b0524a; }
+  .step .me { font-weight: 700; }
+  .offer { margin-top: 8px; padding: 6px 14px; border: 0; border-radius: 4px; background: #1a7a3c;
+           color: #fff; cursor: pointer; font-size: 13px; }
+  .offer:disabled { background: #ccc; cursor: default; }
+  .proposal { border: 1px solid #ddd; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; }
+  .proposal .members { font-size: 13px; margin: 6px 0; }
+  .proposal .member { display: flex; justify-content: space-between; padding: 3px 0; }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 10px; }
+  .tag.pending { background: #fdf1de; color: #a3701a; }
+  .tag.approved { background: #e3f2e8; color: #1a7a3c; }
+  .tag.rejected { background: #f7e6e6; color: #a34141; }
+  .actions button { margin-top: 8px; margin-right: 8px; padding: 6px 14px; border-radius: 4px;
+                     border: 0; cursor: pointer; font-size: 13px; }
+  .actions .accept { background: #1a7a3c; color: #fff; }
+  .actions .reject { background: #a34141; color: #fff; }
+  .err { color: #a34141; font-size: 13px; margin-top: 8px; }
+  .empty { color: #888; font-size: 13px; padding: 6px 0; }
+</style>
+
+<div class="banner">
+  <img src="/assets/Thapar-logo.png" alt="Thapar Institute of Engineering and Technology">
+  <div>
+    <h1>Hostel Room Swap Service</h1>
+    <p>Student dashboard</p>
+  </div>
+  <div class="who">
+    <div id="whoName">&hellip;</div>
+    <button id="logout">Log out</button>
+  </div>
+</div>
+
+<main id="out">Loading&hellip;</main>
+
+<script>
+const CRITERIA = [
+  { key: "floor", label: "Floor" },
+  { key: "direction", label: "Side" },
+  { key: "roommate", label: "Club with roommate" },
+  { key: "room_type", label: "Room type" },
+  { key: "washroom", label: "Washroom" },
+];
+const DIRECTIONS = ["N", "S", "E", "W"];
+const WASHROOMS = ["attached", "common", "sharing"];
+
+let ROUND = null;
+let ROOM = null;
+
+async function api(path, opts) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (res.status === 401) { window.location.href = "/login"; throw new Error("logged out"); }
+  return res;
+}
+
+function badge(status) {
+  return `<span class="badge ${status || "none"}">${status || "no round yet"}</span>`;
+}
+
+async function loadRoomTypes(roundId) {
+  const res = await api(`/api/student/round/${roundId}/room-types`);
+  const d = await res.json();
+  return d.roomTypes.map(r => r.roomType);
+}
+
+function priorityField(criterion, label, savedValue, roomTypes) {
+  let options = `<option value="">Doesn't matter</option>`;
+  if (criterion === "direction") {
+    options += DIRECTIONS.map(d => `<option value="${d}" ${d === savedValue ? "selected" : ""}>${d}</option>`).join("");
+    return `<div class="field"><label>${label}</label><select data-criterion="${criterion}">${options}</select></div>`;
+  }
+  if (criterion === "washroom") {
+    options += WASHROOMS.map(w => `<option value="${w}" ${w === savedValue ? "selected" : ""}>${w}</option>`).join("");
+    return `<div class="field"><label>${label}</label><select data-criterion="${criterion}">${options}</select></div>`;
+  }
+  if (criterion === "room_type") {
+    options += roomTypes.map(t => `<option value="${t}" ${t === savedValue ? "selected" : ""}>${t}</option>`).join("");
+    return `<div class="field"><label>${label}</label><select data-criterion="${criterion}">${options}</select></div>`;
+  }
+  if (criterion === "floor") {
+    return `<div class="field"><label>${label}</label>
+      <input type="number" min="0" data-criterion="${criterion}" value="${savedValue || ""}" placeholder="Doesn't matter"></div>`;
+  }
+  // roommate: roll number of the student to club with
+  return `<div class="field"><label>${label} (roll no.)</label>
+    <input type="text" data-criterion="${criterion}" value="${savedValue || ""}" placeholder="Doesn't matter"></div>`;
+}
+
+async function renderPriorities(roundId) {
+  const [roomTypes, savedRes] = await Promise.all([
+    loadRoomTypes(roundId),
+    api(`/api/student/round/${roundId}/priorities`),
+  ]);
+  const saved = (await savedRes.json()).priorities;
+  const savedByCriterion = Object.fromEntries(saved.map(p => [p.criterion, p.value]));
+
+  return `
+    <div class="card">
+      <h2>Your priorities</h2>
+      <p class="muted">Leave any field as "Doesn't matter" to skip it. These lock once the round is run.</p>
+      <div class="grid" id="priorityFields">
+        ${CRITERIA.map(c => priorityField(c.key, c.label, savedByCriterion[c.key], roomTypes)).join("")}
+      </div>
+      <button class="save" id="savePriorities">Save priorities</button>
+      <div class="err" id="prioritiesErr"></div>
+    </div>`;
+}
+
+function chainCard(option, roll) {
+  const mine = option.members.find(m => m.rollNo === roll);
+  return `
+    <div class="chain">
+      <h3>${option.optionKind.replace("_", " ")} &middot; ${option.members.length} students move together</h3>
+      ${option.members.map(m => `
+        <div class="step">
+          <span class="${m.rollNo === roll ? "me" : ""}">${m.name}${m.rollNo === roll ? " (you)" : ""}</span>
+          <code>${m.from}</code><span class="arrow">&rarr;</span><code>${m.to}</code>
+          <span>${m.match}% match</span>
+        </div>`).join("")}
+      <button class="offer" data-kind="${option.optionKind}" data-chain="${option.chainNo}">
+        Offer this chain to ${mine ? "the group" : "your group"}
+      </button>
+    </div>`;
+}
+
+async function renderResults(roundId, roll) {
+  const res = await api(`/api/student/round/${roundId}/results`);
+  const d = await res.json();
+  if (!d.ready) return "";
+  if (!d.options.length) {
+    return `<div class="card"><h2>Round results</h2><p class="empty">No swap chains include you this round.</p></div>`;
+  }
+  return `
+    <div class="card">
+      <h2>Round results &middot; chains you're part of</h2>
+      ${d.options.map(o => chainCard(o, roll)).join("")}
+    </div>`;
+}
+
+async function renderProposals() {
+  const res = await api("/api/student/proposals");
+  const d = await res.json();
+  if (!d.proposals.length) {
+    return `<div class="card"><h2>Pending offers</h2><p class="empty">No pending swap offers.</p></div>`;
+  }
+  return `
+    <div class="card">
+      <h2>Pending offers</h2>
+      ${d.proposals.map(p => `
+        <div class="proposal" data-id="${p.id}">
+          <b>Chain of ${p.members.length} &middot; ${p.status}</b>
+          <div class="members">
+            ${p.members.map(m => `<div class="member"><span>${m.name}</span>
+              <span class="tag ${m.approval}">${m.approval}</span></div>`).join("")}
+          </div>
+          ${p.status === "proposed" ? `
+            <div class="actions">
+              <button class="accept" data-id="${p.id}">Accept</button>
+              <button class="reject" data-id="${p.id}">Reject</button>
+            </div>` : ""}
+        </div>`).join("")}
+    </div>`;
+}
+
+function attachPriorityHandlers(roundId) {
+  const btn = document.getElementById("savePriorities");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const fields = document.querySelectorAll("#priorityFields [data-criterion]");
+    const priorities = [];
+    fields.forEach(f => {
+      if (f.value.trim() !== "") {
+        priorities.push({ criterion: f.dataset.criterion, value: f.value.trim(), weight: 1 });
+      }
+    });
+    const res = await api(`/api/student/round/${roundId}/priorities`, {
+      method: "PUT", body: JSON.stringify({ priorities }),
+    });
+    const err = document.getElementById("prioritiesErr");
+    err.textContent = res.ok ? "Saved." : (await res.json()).detail || "Could not save.";
+  });
+}
+
+function attachOfferHandlers(roundId) {
+  document.querySelectorAll(".offer").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const res = await api(`/api/student/round/${roundId}/chains/offer`, {
+        method: "POST",
+        body: JSON.stringify({ optionKind: btn.dataset.kind, chainNo: Number(btn.dataset.chain) }),
+      });
+      if (res.ok) { btn.textContent = "Offered"; render(); }
+      else { btn.disabled = false; btn.textContent = (await res.json()).detail || "Could not offer"; }
+    });
+  });
+}
+
+function attachProposalHandlers() {
+  document.querySelectorAll(".actions .accept, .actions .reject").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const accept = btn.classList.contains("accept");
+      await api(`/api/student/proposals/${btn.dataset.id}/respond`, {
+        method: "POST", body: JSON.stringify({ accept }),
+      });
+      render();
+    });
+  });
+}
+
+async function render() {
+  const me = await (await api("/api/auth/me")).json();
+  document.getElementById("whoName").textContent = `${me.name} (${me.rollNo})`;
+
+  const roomRes = await api("/api/student/room");
+  ROOM = roomRes.ok ? await roomRes.json() : null;
+  const roundRes = await api("/api/student/round");
+  ROUND = (await roundRes.json()).round;
+
+  const out = document.getElementById("out");
+  let html = `
+    <div class="card">
+      <h2>Your current room</h2>
+      ${ROOM ? `
+        <div class="row">
+          <div class="kv"><b>${ROOM.room}</b><span>room</span></div>
+          <div class="kv"><b>Floor ${ROOM.floor}</b><span>floor</span></div>
+          <div class="kv"><b>${ROOM.direction}</b><span>side</span></div>
+          <div class="kv"><b>${ROOM.roomType}</b><span>room type</span></div>
+          <div class="kv"><b>${ROOM.washroomType}</b><span>washroom</span></div>
+        </div>` : `<p class="empty">No room on file yet.</p>`}
+    </div>
+
+    <div class="card">
+      <h2>Current swap round</h2>
+      ${ROUND ? `
+        <p>Status: ${badge(ROUND.status)}</p>
+        ${ROUND.status === "open" ? `
+          <div class="toggle">
+            <button id="enrollBtn" class="${ROUND.enrolled ? "active" : ""}">
+              ${ROUND.enrolled ? "Enrolled — click to withdraw" : "Not enrolled — click to enroll"}
+            </button>
+          </div>` : `<p class="muted">Registration is ${ROUND.status === "draft" ? "not open yet" : "closed"}.</p>`}
+      ` : `<p class="empty">No swap round is open for your hostel right now.</p>`}
+    </div>`;
+
+  if (ROUND && ROUND.status === "open" && ROUND.enrolled) {
+    html += await renderPriorities(ROUND.id);
+  }
+  if (ROUND) {
+    html += await renderResults(ROUND.id, me.rollNo);
+  }
+  html += await renderProposals();
+
+  out.innerHTML = html;
+
+  if (ROUND && ROUND.status === "open") {
+    const enrollBtn = document.getElementById("enrollBtn");
+    if (enrollBtn) enrollBtn.addEventListener("click", async () => {
+      await api(`/api/student/round/${ROUND.id}/enroll`, {
+        method: "POST", body: JSON.stringify({ enrolled: !ROUND.enrolled }),
+      });
+      render();
+    });
+    attachPriorityHandlers(ROUND.id);
+  }
+  if (ROUND) attachOfferHandlers(ROUND.id);
+  attachProposalHandlers();
+}
+
+document.getElementById("logout").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST" });
+  window.location.href = "/login";
+});
+
+render();
+</script>

@@ -1,0 +1,231 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Admin &middot; Hostel Room Swap Service</title>
+<style>
+  body { font: 15px system-ui, sans-serif; margin: 0; background: #f5f5f7; color: #1a1a1a; }
+  .banner {
+    background: linear-gradient(rgba(90,20,15,.74), rgba(90,20,15,.74)),
+                url("/assets/hostel-m.png") center/cover;
+    color: #fff; padding: 20px 32px; display: flex; align-items: center; gap: 18px;
+  }
+  .banner img { height: 44px; background: #fff; padding: 6px 10px; border-radius: 4px; }
+  .banner h1 { margin: 0; font-size: 19px; }
+  .banner p { margin: 3px 0 0; font-size: 13px; opacity: .85; }
+  .banner .who { margin-left: auto; text-align: right; font-size: 13px; }
+  .banner button { background: rgba(255,255,255,.15); color: #fff; border: 1px solid rgba(255,255,255,.4);
+                    border-radius: 4px; padding: 5px 10px; cursor: pointer; margin-top: 4px; }
+  main { padding: 24px 32px; max-width: 1000px; margin: 0 auto; }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 12px; font-size: 14px; text-transform: uppercase; color: #666; }
+  label { display: block; font-size: 12px; color: #666; margin: 8px 0 4px; }
+  input, select { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 13px; }
+  .inline { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+  button.act { padding: 7px 16px; border: 0; border-radius: 4px; background: #7a2b2b; color: #fff;
+               cursor: pointer; font-size: 13px; }
+  button.act:disabled { background: #ccc; cursor: default; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th { text-align: left; font-size: 11px; text-transform: uppercase; color: #666; padding: 6px 8px;
+       border-bottom: 1px solid #ddd; }
+  td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+  .badge.open { background: #e3f2e8; color: #1a7a3c; }
+  .badge.locked, .badge.running { background: #fdf1de; color: #a3701a; }
+  .badge.completed { background: #e6ecf7; color: #2b4b8a; }
+  .badge.draft { background: #ececf1; color: #666; }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 10px; }
+  .tag.pending { background: #fdf1de; color: #a3701a; }
+  .tag.approved { background: #e3f2e8; color: #1a7a3c; }
+  .tag.rejected { background: #f7e6e6; color: #a34141; }
+  .proposal { border: 1px solid #eee; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+  .muted { color: #888; font-size: 13px; }
+  .err { color: #a34141; font-size: 13px; margin-top: 8px; }
+</style>
+
+<div class="banner">
+  <img src="/assets/Thapar-logo.png" alt="Thapar Institute of Engineering and Technology">
+  <div>
+    <h1>Hostel Room Swap Service</h1>
+    <p>Admin dashboard</p>
+  </div>
+  <div class="who">
+    <div id="whoName">&hellip;</div>
+    <button id="logout">Log out</button>
+  </div>
+</div>
+
+<main id="out">Loading&hellip;</main>
+
+<script>
+async function api(path, opts) {
+  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (res.status === 401) { window.location.href = "/login"; throw new Error("logged out"); }
+  return res;
+}
+
+let HOSTEL_ID = null;
+let ROUND = null;
+
+async function renderHostelPicker() {
+  const res = await api("/api/admin/hostels");
+  const d = await res.json();
+  if (!HOSTEL_ID && d.hostels.length) HOSTEL_ID = d.hostels[0].id;
+  return `
+    <div class="card">
+      <h2>Hostel</h2>
+      <select id="hostelPicker">
+        ${d.hostels.map(h => `<option value="${h.id}" ${h.id === HOSTEL_ID ? "selected" : ""}>
+          ${h.code} &middot; ${h.name}</option>`).join("")}
+      </select>
+    </div>`;
+}
+
+function roomTypeRow(rt) {
+  return `<tr>
+    <td>${rt.roomType}</td>
+    <td><input type="number" min="0" value="${rt.quantity}" data-room-type="${rt.roomType}" style="width:80px"></td>
+  </tr>`;
+}
+
+async function renderRoomTypes(hostelId) {
+  const res = await api(`/api/admin/hostels/${hostelId}/room-types`);
+  const d = await res.json();
+  return `
+    <div class="card">
+      <h2>Room-type availability</h2>
+      <p class="muted">Declare which room types are available in this hostel, and how many.</p>
+      <div class="inline">
+        <div>
+          <label>Room type (e.g. 2SAC, 2SNAC, 1SAC)</label>
+          <input id="newRoomType" placeholder="2SAC">
+        </div>
+        <div>
+          <label>Quantity</label>
+          <input id="newQuantity" type="number" min="0" style="width:100px">
+        </div>
+        <button class="act" id="addRoomType">Add / update</button>
+      </div>
+      <table id="roomTypeTable">
+        <tr><th>Room type</th><th>Quantity</th></tr>
+        ${d.roomTypes.map(roomTypeRow).join("")}
+      </table>
+      <div class="err" id="roomTypeErr"></div>
+    </div>`;
+}
+
+function proposalRow(p) {
+  return `
+    <div class="proposal">
+      <b>${p.status}</b> &middot; mean match, ${p.members.length} students
+      <table>
+        <tr><th>Student</th><th>From</th><th>To</th><th>Status</th></tr>
+        ${p.members.map(m => `<tr>
+          <td>${m.name}</td><td><code>${m.fromSlotId.slice(0, 8)}</code></td>
+          <td><code>${m.toSlotId.slice(0, 8)}</code></td>
+          <td><span class="tag ${m.approval}">${m.approval}</span></td>
+        </tr>`).join("")}
+      </table>
+    </div>`;
+}
+
+async function renderRound(hostelId) {
+  const roundRes = await api(`/api/admin/hostels/${hostelId}/round`);
+  const active = (await roundRes.json()).round;
+  ROUND = active;
+
+  let controls = "";
+  if (!active) {
+    controls = `<button class="act" id="createRound">Create a round for this hostel</button>`;
+  } else if (active.status === "draft") {
+    controls = `<button class="act" id="openRound">Open registration</button>`;
+  } else if (active.status === "open") {
+    controls = `<button class="act" id="lockRun">Lock registration &amp; run matching</button>`;
+  } else if (active.status === "completed") {
+    controls = `<p class="muted">Round complete. Students can offer and accept chains below.</p>`;
+  } else {
+    controls = `<p class="muted">Round is ${active.status}.</p>`;
+  }
+
+  let proposals = "";
+  if (active) {
+    const pres = await api(`/api/admin/rounds/${active.id}/proposals`);
+    const pd = await pres.json();
+    proposals = `
+      <div class="card">
+        <h2>Swap chains offered this round</h2>
+        ${pd.proposals.length ? pd.proposals.map(proposalRow).join("") : `<p class="muted">No chains offered yet.</p>`}
+      </div>`;
+  }
+
+  return `
+    <div class="card">
+      <h2>Swap round</h2>
+      <p>Status: <span class="badge ${active ? active.status : "draft"}">${active ? active.status : "none"}</span></p>
+      ${controls}
+      <div class="err" id="roundErr"></div>
+    </div>
+    ${proposals}`;
+}
+
+function attachHandlers(hostelId) {
+  const addBtn = document.getElementById("addRoomType");
+  if (addBtn) addBtn.addEventListener("click", async () => {
+    const roomType = document.getElementById("newRoomType").value.trim();
+    const quantity = Number(document.getElementById("newQuantity").value);
+    if (!roomType) return;
+    const res = await api(`/api/admin/hostels/${hostelId}/room-types`, {
+      method: "PUT", body: JSON.stringify({ roomType, quantity }),
+    });
+    document.getElementById("roomTypeErr").textContent = res.ok ? "" : "Could not save.";
+    render();
+  });
+
+  const createBtn = document.getElementById("createRound");
+  if (createBtn) createBtn.addEventListener("click", async () => {
+    await api("/api/admin/rounds", { method: "POST", body: JSON.stringify({ hostelId }) });
+    render();
+  });
+
+  const openBtn = document.getElementById("openRound");
+  if (openBtn) openBtn.addEventListener("click", async () => {
+    const res = await api(`/api/admin/rounds/${ROUND.id}/open`, { method: "POST" });
+    if (!res.ok) document.getElementById("roundErr").textContent = (await res.json()).detail;
+    render();
+  });
+
+  const lockBtn = document.getElementById("lockRun");
+  if (lockBtn) lockBtn.addEventListener("click", async () => {
+    lockBtn.disabled = true;
+    lockBtn.textContent = "Running matching engine…";
+    const res = await api(`/api/admin/rounds/${ROUND.id}/lock-and-run`, { method: "POST" });
+    if (!res.ok) document.getElementById("roundErr").textContent = (await res.json()).detail;
+    render();
+  });
+}
+
+async function render() {
+  const me = await (await api("/api/auth/me")).json();
+  document.getElementById("whoName").textContent = `${me.name} (admin)`;
+
+  const out = document.getElementById("out");
+  const hostelPicker = await renderHostelPicker();
+  if (!HOSTEL_ID) {
+    out.innerHTML = hostelPicker + `<div class="card"><p class="muted">
+      No hostels exist yet.</p></div>`;
+    return;
+  }
+
+  out.innerHTML = hostelPicker + (await renderRoomTypes(HOSTEL_ID)) + (await renderRound(HOSTEL_ID));
+  document.getElementById("hostelPicker").addEventListener("change", (e) => {
+    HOSTEL_ID = e.target.value;
+    render();
+  });
+  attachHandlers(HOSTEL_ID);
+}
+
+document.getElementById("logout").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST" });
+  window.location.href = "/login";
+});
+
+render();
+</script>
