@@ -8,7 +8,7 @@ look good -- across 20 such cohorts the median satisfaction gain was
 
 from datetime import datetime
 
-from .domain.models import Allocation, BedSlot, Direction, Room, Student
+from .domain.models import Allocation, BedSlot, Direction, Room, Student, WashroomType
 from .domain.pool import SwapPool
 from .domain.preferences import Criterion, Preference, PreferenceSet
 
@@ -125,7 +125,10 @@ PREFERENCES = {
 def build_pool() -> SwapPool:
     """Assemble the master table into a pool the engine can match."""
     rooms = {
-        rid: Room(rid, "A", floor, Direction(facing), washroom, beds)
+        rid: Room(
+            rid, "A", floor, Direction(facing),
+            WashroomType.ATTACHED if washroom else WashroomType.COMMON, beds,
+        )
         for rid, floor, facing, washroom, beds in ROOMS
     }
     slots = tuple(
