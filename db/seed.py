@@ -15,17 +15,28 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "code"))
 
 import psycopg  # noqa: E402
 
+from hostelswap.auth import hash_password  # noqa: E402
 from hostelswap.demo_data import PREFERENCES, ROOMS, STUDENTS  # noqa: E402
 
 HOSTEL_CODE = "A"
 HOSTEL_NAME = "Hostel A"
 EPOCH = datetime(2026, 1, 1)
 
+# The first two students in the demo cohort also get a login, so the
+# student/admin flows have someone to sign in as beyond raw seed data.
+# One extra account (not in the swap pool) is the hostel admin.
+DEMO_PASSWORD = "swap1234"
+ADMIN_ROLL = "admin001"
+ADMIN_NAME = "Hostel Warden"
+ADMIN_EMAIL = "warden@thapar.edu"
+
 # TRUNCATE bypasses row-level triggers, so it can clear the append-only
 # allocations table. Ordinary DELETE and UPDATE are still refused, which
 # is the point -- history cannot be rewritten through the application.
 TABLES = (
-    "swap_chain_members", "swap_proposals", "preferences", "preference_sets",
+    "swap_chain_members", "swap_proposals", "round_chain_options",
+    "round_enrollments", "swap_rounds", "hostel_room_type_inventory",
+    "sessions", "preferences", "preference_sets",
     "allocations", "bed_slots", "rooms", "students", "hostels",
 )
 
@@ -46,12 +57,12 @@ def seed(dsn: str) -> None:
 
         room_ids = {}
         for room_id, floor, facing, washroom, capacity in ROOMS:
+            washroom_type = "attached" if washroom else "common"
             cur.execute(
                 """insert into rooms
-                   (hostel_id, room_no, floor, direction,
-                    has_attached_washroom, capacity)
+                   (hostel_id, room_no, floor, direction, washroom_type, capacity)
                    values (%s, %s, %s, %s, %s, %s) returning id""",
-                (hostel_id, room_id.split("-", 1)[1], floor, facing, washroom, capacity),
+                (hostel_id, room_id.split("-", 1)[1], floor, facing, washroom_type, capacity),
             )
             room_ids[room_id] = cur.fetchone()[0]
 
@@ -65,12 +76,20 @@ def seed(dsn: str) -> None:
                 )
                 slot_ids[f"{room_id}-{label}"] = cur.fetchone()[0]
 
+        cur.execute(
+            "insert into students (roll_no, name, email, password_hash, role) values (%s, %s, %s, %s, 'admin')",
+            (ADMIN_ROLL, ADMIN_NAME, ADMIN_EMAIL, hash_password(DEMO_PASSWORD)),
+        )
+
         student_ids = {}
         for i, (sid, name, _) in enumerate(STUDENTS):
             roll = roll_no(i)
+            # Every seeded student can log in with the same demo password,
+            # so any of them works for walking through the student flow.
             cur.execute(
-                "insert into students (roll_no, name, email) values (%s, %s, %s) returning id",
-                (roll, name, f"{roll}@thapar.edu"),
+                """insert into students (roll_no, name, email, password_hash)
+                   values (%s, %s, %s, %s) returning id""",
+                (roll, name, f"{roll}@thapar.edu", hash_password(DEMO_PASSWORD)),
             )
             student_ids[sid] = cur.fetchone()[0]
 
@@ -98,6 +117,8 @@ def seed(dsn: str) -> None:
         conn.commit()
 
     print(f"seeded {len(STUDENTS)} students, {len(ROOMS)} rooms in hostel {HOSTEL_CODE}")
+    print(f"login as admin:   {ADMIN_ROLL} / {DEMO_PASSWORD}")
+    print(f"login as student: {roll_no(0)} / {DEMO_PASSWORD}  (any seeded roll number works)")
 
 
 def main() -> int:
