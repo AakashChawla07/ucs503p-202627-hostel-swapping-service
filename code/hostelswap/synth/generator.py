@@ -3,7 +3,7 @@
 import random
 from datetime import datetime
 
-from ..domain.models import Allocation, BedSlot, Direction, Room, Student
+from ..domain.models import Allocation, BedSlot, Direction, Room, Student, WashroomType
 from ..domain.pool import SwapPool
 from ..domain.preferences import Criterion, Preference, PreferenceSet
 
@@ -78,8 +78,9 @@ def _build_rooms(
             hostel=hostel,
             floor=floor,
             direction=rng.choice(tuple(Direction)),
-            has_attached_washroom=rng.random() < 0.5,
+            washroom_type=rng.choice(tuple(WashroomType)),
             capacity=rng.choice(CAPACITIES),
+            ac=rng.random() < 0.5,
         )
         rooms.append(room)
         slots.extend(
@@ -110,9 +111,11 @@ def _build_preferences(
             case Criterion.DIRECTION:
                 value = rng.choice(tuple(Direction))
             case Criterion.WASHROOM:
-                value = rng.random() < 0.7
+                value = rng.choice(tuple(WashroomType)).value
             case _:
-                value = rng.choice(CAPACITIES)
+                capacity = rng.choice(CAPACITIES)
+                ac = rng.random() < 0.5
+                value = f"{capacity}S{'A' if ac else 'NA'}C"
         preferences.append(
             Preference(
                 criterion=criterion,

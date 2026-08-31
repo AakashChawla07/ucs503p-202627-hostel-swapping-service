@@ -98,10 +98,10 @@ def test_shorter_chain_for_less_match():
     """The answer to "a single score is unidimensional".
 
     The fastest option here gives up a little match quality to shorten
-    the longest chain, from six students to four.
+    the longest chain, from four students to two.
     Ranking on match alone would hide that.
     """
-    options = find_swap_options(generate_pool(students=12, seed=3), k=30)
+    options = find_swap_options(generate_pool(students=12, seed=17), k=30)
 
     assert len(options) == 3
     assert [o.kind for o in options] == [
@@ -116,7 +116,7 @@ def test_shorter_chain_for_less_match():
 
 
 def test_labels_are_true():
-    options = find_swap_options(generate_pool(students=12, seed=3), k=30)
+    options = find_swap_options(generate_pool(students=12, seed=17), k=30)
     by_kind = {option.kind: option for option in options}
 
     assert all(
