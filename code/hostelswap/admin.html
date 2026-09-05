@@ -140,9 +140,15 @@ async function renderRound(hostelId) {
   } else if (active.status === "open") {
     controls = `<button class="act" id="lockRun">Lock registration &amp; run matching</button>`;
   } else if (active.status === "completed") {
-    controls = `<p class="muted">Round complete. Students can offer and accept chains below.</p>`;
+    controls = `
+      <p class="muted">Round complete. Students can still offer and respond to chains below.</p>
+      <button class="act" id="startNewRound">Open registration for a new round</button>
+      <p class="muted">Starting a new round does not touch this one -- any offers here that
+      haven't been accepted or rejected yet stay open for students to settle.</p>`;
   } else {
-    controls = `<p class="muted">Round is ${active.status}.</p>`;
+    controls = `
+      <p class="muted">Round is ${active.status}.</p>
+      <button class="act" id="startNewRound">Open registration for a new round</button>`;
   }
 
   let proposals = "";
@@ -182,6 +188,21 @@ function attachHandlers(hostelId) {
   const createBtn = document.getElementById("createRound");
   if (createBtn) createBtn.addEventListener("click", async () => {
     await api("/api/admin/rounds", { method: "POST", body: JSON.stringify({ hostelId }) });
+    render();
+  });
+
+  // Creates a new round and opens it in one step, regardless of whether
+  // the previous round still has offers pending accept/reject -- those
+  // live independently of which round is "active" for new registration.
+  const startNewBtn = document.getElementById("startNewRound");
+  if (startNewBtn) startNewBtn.addEventListener("click", async () => {
+    startNewBtn.disabled = true;
+    const created = await api("/api/admin/rounds", {
+      method: "POST", body: JSON.stringify({ hostelId }),
+    });
+    const { roundId } = await created.json();
+    const opened = await api(`/api/admin/rounds/${roundId}/open`, { method: "POST" });
+    if (!opened.ok) document.getElementById("roundErr").textContent = (await opened.json()).detail;
     render();
   });
 

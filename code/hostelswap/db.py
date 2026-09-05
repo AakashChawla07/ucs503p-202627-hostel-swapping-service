@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import psycopg
+from psycopg_pool import ConnectionPool
 
 log = logging.getLogger("hostelswap.db")
 
@@ -45,6 +46,23 @@ def dsn() -> str | None:
     return None
 
 
+# A fresh connection to the Supabase pooler takes roughly a second just to
+# establish (TLS handshake + auth), and almost every request here used to
+# pay that cost multiple times over (one per query). A small pool of
+# already-open connections, kept warm for the life of the process, turns
+# that into a one-time cost instead of a per-query one. Keyed by DSN so
+# tests that monkeypatch DATABASE_URL don't share a pool across strings.
+_pools: dict[str, ConnectionPool] = {}
+
+
+def _pool(connection_string: str) -> ConnectionPool:
+    pool = _pools.get(connection_string)
+    if pool is None:
+        pool = ConnectionPool(connection_string, min_size=1, max_size=5, open=True)
+        _pools[connection_string] = pool
+    return pool
+
+
 def _value(criterion: Criterion, raw: str):
     """Preference values are stored as text; put them back in their type."""
     match criterion:
@@ -69,7 +87,7 @@ def load_pool(connection_string: str, hostel: str = "A") -> SwapPool:
     """Build a pool from the students currently living in `hostel`."""
     started = time.perf_counter()
     log.info("connecting to postgres at %s", _host(connection_string))
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select r.id, h.code, r.room_no, r.floor, r.direction,
@@ -157,7 +175,7 @@ def describe(connection_string: str) -> list[dict]:
 
     Used to show the real schema rather than a diagram of one.
     """
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select table_name, column_name, data_type, is_nullable
@@ -189,7 +207,7 @@ def describe(connection_string: str) -> list[dict]:
 
 def fetch_student_credentials(connection_string: str, identifier: str) -> dict | None:
     """Look a student up by roll number or email, for login."""
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select id, roll_no, name, role, password_hash
@@ -209,7 +227,7 @@ def fetch_student_credentials(connection_string: str, identifier: str) -> dict |
 
 
 def create_session(connection_string: str, token: str, student_id: str, expires_at: datetime) -> None:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             "insert into sessions (token, student_id, expires_at) values (%s, %s, %s)",
             (token, student_id, expires_at),
@@ -218,13 +236,13 @@ def create_session(connection_string: str, token: str, student_id: str, expires_
 
 
 def delete_session(connection_string: str, token: str) -> None:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute("delete from sessions where token = %s", (token,))
         conn.commit()
 
 
 def fetch_session_user(connection_string: str, token: str) -> dict | None:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select s.id, s.roll_no, s.name, s.role
@@ -246,7 +264,7 @@ def fetch_session_user(connection_string: str, token: str) -> dict | None:
 
 def fetch_student_room(connection_string: str, student_id: str) -> dict | None:
     """The room a student currently occupies, plus their hostel's id."""
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select h.id, h.code, h.name, r.room_no, r.floor, r.direction,
@@ -270,12 +288,70 @@ def fetch_student_room(connection_string: str, student_id: str) -> dict | None:
     }
 
 
+def fetch_student_round_status(connection_string: str, student_id: str) -> dict | None:
+    """The round a student should see: their hostel's most recent
+    non-cancelled round, plus whether they're enrolled in it.
+
+    One round trip instead of three (room -> hostel's active round ->
+    enrollment flag), via CTEs doing the same lookups server-side.
+    """
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            with my_hostel as (
+                select r.hostel_id
+                from current_allocations c
+                join bed_slots b on b.id = c.slot_id
+                join rooms r on r.id = b.room_id
+                where c.student_id = %(student_id)s
+            ),
+            active_round as (
+                select sr.id, sr.hostel_id, sr.status
+                from swap_rounds sr, my_hostel
+                where sr.hostel_id = my_hostel.hostel_id and sr.status <> 'cancelled'
+                order by sr.created_at desc
+                limit 1
+            )
+            select
+                (select hostel_id from my_hostel) as has_room,
+                active_round.id, active_round.hostel_id, active_round.status,
+                coalesce(re.enrolled, false)
+            from active_round
+            left join round_enrollments re
+                on re.round_id = active_round.id and re.student_id = %(student_id)s
+            """,
+            {"student_id": student_id},
+        )
+        row = cur.fetchone()
+        if row is None:
+            # No hostel row at all means the student has no room on file;
+            # a hostel with no round yet still needs distinguishing from
+            # that, so check separately only in this (rare) empty case.
+            cur.execute(
+                """
+                select 1 from current_allocations where student_id = %s
+                """,
+                (student_id,),
+            )
+            has_room = cur.fetchone() is not None
+            return {"hasRoom": has_room, "round": None} if has_room else None
+
+    _has_room, round_id, hostel_id, status, enrolled = row
+    return {
+        "hasRoom": True,
+        "round": {
+            "id": str(round_id), "hostelId": str(hostel_id),
+            "status": status, "enrolled": enrolled,
+        },
+    }
+
+
 # --------------------------------------------------------------------------
 # Hostels
 # --------------------------------------------------------------------------
 
 def fetch_hostels(connection_string: str) -> list[dict]:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute("select id, code, name from hostels order by code")
         return [{"id": str(hid), "code": code, "name": name} for hid, code, name in cur.fetchall()]
 
@@ -285,7 +361,7 @@ def fetch_hostels(connection_string: str) -> list[dict]:
 # --------------------------------------------------------------------------
 
 def fetch_room_type_catalog(connection_string: str, hostel_id: str) -> list[dict]:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select room_type, quantity from hostel_room_type_inventory
@@ -299,7 +375,7 @@ def fetch_room_type_catalog(connection_string: str, hostel_id: str) -> list[dict
 def upsert_room_type_quantity(
     connection_string: str, hostel_id: str, room_type: str, quantity: int
 ) -> None:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             insert into hostel_room_type_inventory (hostel_id, room_type, quantity)
@@ -316,7 +392,7 @@ def upsert_room_type_quantity(
 # --------------------------------------------------------------------------
 
 def create_round(connection_string: str, hostel_id: str) -> str:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             "insert into swap_rounds (hostel_id, status) values (%s, 'draft') returning id",
             (hostel_id,),
@@ -329,7 +405,7 @@ def create_round(connection_string: str, hostel_id: str) -> str:
 def set_round_status(connection_string: str, round_id: str, status: str, **timestamps) -> None:
     columns = ", ".join(f"{col} = %s" for col in timestamps)
     sep = ", " if columns else ""
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             f"update swap_rounds set status = %s{sep}{columns} where id = %s",
             (status, *timestamps.values(), round_id),
@@ -338,7 +414,7 @@ def set_round_status(connection_string: str, round_id: str, status: str, **times
 
 
 def fetch_round(connection_string: str, round_id: str) -> dict | None:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             "select id, hostel_id, status from swap_rounds where id = %s", (round_id,)
         )
@@ -356,7 +432,7 @@ def fetch_active_round_for_hostel(connection_string: str, hostel_id: str) -> dic
     resolving to the round whose results and offers they should be looking
     at, not just the ones still accepting registration.
     """
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select id, status from swap_rounds
@@ -377,7 +453,7 @@ def fetch_active_round_for_hostel(connection_string: str, hostel_id: str) -> dic
 # --------------------------------------------------------------------------
 
 def set_enrollment(connection_string: str, round_id: str, student_id: str, enrolled: bool) -> None:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             insert into round_enrollments (round_id, student_id, enrolled)
@@ -391,7 +467,7 @@ def set_enrollment(connection_string: str, round_id: str, student_id: str, enrol
 
 
 def fetch_enrollment(connection_string: str, round_id: str, student_id: str) -> bool:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             "select enrolled from round_enrollments where round_id = %s and student_id = %s",
             (round_id, student_id),
@@ -412,7 +488,7 @@ def replace_preferences(
     `preferences` is a list of {criterion, value, weight, hard}; criteria the
     student left as "doesn't matter" are simply absent from the list.
     """
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             update preference_sets set active = false
@@ -425,19 +501,22 @@ def replace_preferences(
             (student_id, round_id),
         )
         set_id = cur.fetchone()[0]
-        for p in preferences:
-            cur.execute(
+        if preferences:
+            cur.executemany(
                 """
                 insert into preferences (preference_set_id, criterion, value, weight, hard)
                 values (%s, %s, %s, %s, %s)
                 """,
-                (set_id, p["criterion"], str(p["value"]), p.get("weight", 1), p.get("hard", False)),
+                [
+                    (set_id, p["criterion"], str(p["value"]), p.get("weight", 1), p.get("hard", False))
+                    for p in preferences
+                ],
             )
         conn.commit()
 
 
 def fetch_preferences(connection_string: str, student_id: str, round_id: str) -> list[dict]:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select p.criterion, p.value, p.weight, p.hard
@@ -469,7 +548,7 @@ class RoundPool:
 
 def load_round_pool(connection_string: str, round_id: str) -> RoundPool:
     started = time.perf_counter()
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute("select hostel_id from swap_rounds where id = %s", (round_id,))
         row = cur.fetchone()
         if row is None:
@@ -561,14 +640,14 @@ def load_round_pool(connection_string: str, round_id: str) -> RoundPool:
 # --------------------------------------------------------------------------
 
 def clear_chain_options(connection_string: str, round_id: str) -> None:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute("delete from round_chain_options where round_id = %s", (round_id,))
         conn.commit()
 
 
 def insert_chain_options(connection_string: str, round_id: str, rows: list[dict]) -> None:
     """`rows`: {optionKind, chainNo, studentId, fromSlotId, toSlotId, matchValue} (uuids)."""
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.executemany(
             """
             insert into round_chain_options
@@ -583,7 +662,7 @@ def insert_chain_options(connection_string: str, round_id: str, rows: list[dict]
 
 def fetch_chain_options(connection_string: str, round_id: str) -> list[dict]:
     """All persisted chain options for a round, grouped by (option_kind, chain_no)."""
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select o.option_kind, o.chain_no, s.id, s.roll_no, s.name,
@@ -636,7 +715,7 @@ def insert_proposal(
     offering_roll_no: str,
 ) -> str:
     """`members`: {studentId, rollNo, fromSlotId, toSlotId, matchValue} (uuids)."""
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         try:
             cur.execute(
                 """
@@ -646,17 +725,21 @@ def insert_proposal(
                 (round_id, kind, mean_match, longest_chain, expires_at),
             )
             proposal_id = cur.fetchone()[0]
+            rows = []
             for position, member in enumerate(members):
                 approval = "approved" if member["rollNo"] == offering_roll_no else "pending"
-                cur.execute(
-                    """
-                    insert into swap_chain_members
-                        (proposal_id, position, student_id, from_slot_id, to_slot_id, match_value, approval, responded_at)
-                    values (%s, %s, %s, %s, %s, %s, %s, case when %s = 'approved' then now() else null end)
-                    """,
-                    (proposal_id, position, member["studentId"], member["fromSlotId"],
-                     member["toSlotId"], member["matchValue"], approval, approval),
-                )
+                rows.append((
+                    proposal_id, position, member["studentId"], member["fromSlotId"],
+                    member["toSlotId"], member["matchValue"], approval, approval,
+                ))
+            cur.executemany(
+                """
+                insert into swap_chain_members
+                    (proposal_id, position, student_id, from_slot_id, to_slot_id, match_value, approval, responded_at)
+                values (%s, %s, %s, %s, %s, %s, %s, case when %s = 'approved' then now() else null end)
+                """,
+                rows,
+            )
         except psycopg.errors.UniqueViolation:
             conn.rollback()
             raise AlreadyReserved(
@@ -666,42 +749,58 @@ def insert_proposal(
     return str(proposal_id)
 
 
-def fetch_proposal(connection_string: str, proposal_id: str) -> dict | None:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+def _fetch_proposals_bulk(connection_string: str, proposal_ids: list[str]) -> list[dict]:
+    """Headers + members for many proposals in two round trips total,
+    instead of two round trips *per proposal* (the loop this replaced)."""
+    if not proposal_ids:
+        return []
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
-            "select id, round_id, status, expires_at, settled_at from swap_proposals where id = %s",
-            (proposal_id,),
+            """
+            select id, round_id, status, expires_at, settled_at
+            from swap_proposals where id = any(%s)
+            """,
+            (proposal_ids,),
         )
-        row = cur.fetchone()
-        if row is None:
-            return None
-        pid, round_id, status, expires_at, settled_at = row
+        by_id = {
+            str(pid): {
+                "id": str(pid), "roundId": str(round_id) if round_id else None,
+                "status": status, "expiresAt": expires_at, "settledAt": settled_at,
+                "members": [],
+            }
+            for pid, round_id, status, expires_at, settled_at in cur.fetchall()
+        }
 
         cur.execute(
             """
-            select m.position, s.id, s.roll_no, s.name, m.from_slot_id, m.to_slot_id,
-                   m.match_value, m.approval, m.responded_at
+            select m.proposal_id, m.position, s.id, s.roll_no, s.name,
+                   m.from_slot_id, m.to_slot_id, m.match_value, m.approval, m.responded_at
             from swap_chain_members m join students s on s.id = m.student_id
-            where m.proposal_id = %s order by m.position
+            where m.proposal_id = any(%s)
+            order by m.proposal_id, m.position
             """,
-            (proposal_id,),
+            (proposal_ids,),
         )
-        members = [
-            {
-                "position": pos, "studentId": str(sid), "rollNo": roll_no, "name": name,
-                "fromSlotId": str(fs), "toSlotId": str(ts), "matchValue": float(mv),
-                "approval": approval, "respondedAt": responded_at,
-            }
-            for pos, sid, roll_no, name, fs, ts, mv, approval, responded_at in cur.fetchall()
-        ]
-    return {
-        "id": str(pid), "roundId": str(round_id) if round_id else None,
-        "status": status, "expiresAt": expires_at, "settledAt": settled_at, "members": members,
-    }
+        for pid, pos, sid, roll_no, name, fs, ts, mv, approval, responded_at in cur.fetchall():
+            proposal = by_id.get(str(pid))
+            if proposal is not None:
+                proposal["members"].append({
+                    "position": pos, "studentId": str(sid), "rollNo": roll_no, "name": name,
+                    "fromSlotId": str(fs), "toSlotId": str(ts), "matchValue": float(mv),
+                    "approval": approval, "respondedAt": responded_at,
+                })
+
+    # Preserve the caller's ordering (created_at, or whatever they passed).
+    return [by_id[pid] for pid in proposal_ids if pid in by_id]
+
+
+def fetch_proposal(connection_string: str, proposal_id: str) -> dict | None:
+    results = _fetch_proposals_bulk(connection_string, [proposal_id])
+    return results[0] if results else None
 
 
 def fetch_student_proposals(connection_string: str, student_id: str) -> list[dict]:
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             """
             select distinct m.proposal_id from swap_chain_members m
@@ -710,7 +809,7 @@ def fetch_student_proposals(connection_string: str, student_id: str) -> list[dic
             (student_id,),
         )
         proposal_ids = [str(r[0]) for r in cur.fetchall()]
-    return [p for p in (fetch_proposal(connection_string, pid) for pid in proposal_ids) if p]
+    return _fetch_proposals_bulk(connection_string, proposal_ids)
 
 
 def update_proposal(
@@ -724,26 +823,29 @@ def update_proposal(
     the outcome of one response (a single rejection voids the whole chain,
     so every member's row is updated to keep the "one live proposal" index
     consistent)."""
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             "update swap_proposals set status = %s, settled_at = case when %s then now() else settled_at end where id = %s",
             (status, settled, proposal_id),
         )
-        for student_id, approval in member_approvals.items():
-            cur.execute(
+        if member_approvals:
+            cur.executemany(
                 """
                 update swap_chain_members
                 set approval = %s, responded_at = coalesce(responded_at, now())
                 where proposal_id = %s and student_id = %s
                 """,
-                (approval, proposal_id, student_id),
+                [
+                    (approval, proposal_id, student_id)
+                    for student_id, approval in member_approvals.items()
+                ],
             )
         conn.commit()
 
 
 def insert_allocations(connection_string: str, allocations: list[tuple[str, str, datetime]]) -> None:
     """`allocations`: (student_id, slot_id, effective_from) uuids."""
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.executemany(
             """
             insert into allocations (student_id, slot_id, effective_from, source)
@@ -756,9 +858,9 @@ def insert_allocations(connection_string: str, allocations: list[tuple[str, str,
 
 def fetch_round_proposals(connection_string: str, round_id: str) -> list[dict]:
     """Every proposal for a round with its members' approval status, for admins."""
-    with psycopg.connect(connection_string) as conn, conn.cursor() as cur:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
             "select id from swap_proposals where round_id = %s order by created_at", (round_id,)
         )
         proposal_ids = [str(r[0]) for r in cur.fetchall()]
-    return [p for p in (fetch_proposal(connection_string, pid) for pid in proposal_ids) if p]
+    return _fetch_proposals_bulk(connection_string, proposal_ids)

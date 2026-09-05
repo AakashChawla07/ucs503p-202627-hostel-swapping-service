@@ -25,7 +25,7 @@ dependencies = [
     "scipy",
     "fastapi",
     "uvicorn",
-    "psycopg[binary]",
+    "psycopg[binary,pool]",
 ]
 
 [project.optional-dependencies]

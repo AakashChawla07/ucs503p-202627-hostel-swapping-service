@@ -11,7 +11,7 @@ from statistics import fmean
 
 from . import db
 from .domain.pipeline import find_swap_options
-from .domain.proposal import Move, Proposal, ProposalStatus, Response
+from .domain.proposal import InvalidTransition, Move, Proposal, ProposalStatus, Response
 from .domain.proposal import execute as domain_execute
 from .domain.proposal import respond as domain_respond
 
@@ -134,7 +134,13 @@ def respond(connection_string: str, proposal_id: str, student_roll_no: str, acce
         id=data["id"], moves=moves, status=ProposalStatus(data["status"]),
         expires_at=data["expiresAt"], settled_at=data["settledAt"],
     )
-    updated = domain_respond(current, student_roll_no, accept, now)
+    try:
+        updated = domain_respond(current, student_roll_no, accept, now)
+    except InvalidTransition as exc:
+        # Not a member, already responded, or the proposal already
+        # settled -- all client mistakes (a stale page, a double click),
+        # not server errors.
+        raise InvalidRoundState(str(exc)) from exc
 
     if updated.status is ProposalStatus.REJECTED:
         # One refusal voids the whole chain; free every member so they can
