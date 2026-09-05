@@ -151,8 +151,16 @@ async function renderPriorities(roundId) {
     </div>`;
 }
 
-function chainCard(option, roll) {
+function chainCard(option, roll, liveProposal) {
   const mine = option.members.find(m => m.rollNo === roll);
+  // A student can only be in one live (non-rejected) proposal at a time --
+  // the server enforces this -- so once one exists, every other "offer"
+  // button is dead regardless of which chain it points to.
+  const offerControl = liveProposal
+    ? `<button class="offer" disabled>You already have a pending offer -- see below</button>`
+    : `<button class="offer" data-kind="${option.optionKind}" data-chain="${option.chainNo}">
+         Offer this chain to ${mine ? "the group" : "your group"}
+       </button>`;
   return `
     <div class="chain">
       <h3>${option.optionKind.replace("_", " ")} &middot; ${option.members.length} students move together</h3>
@@ -162,13 +170,11 @@ function chainCard(option, roll) {
           <code>${m.from}</code><span class="arrow">&rarr;</span><code>${m.to}</code>
           <span>${m.match}% match</span>
         </div>`).join("")}
-      <button class="offer" data-kind="${option.optionKind}" data-chain="${option.chainNo}">
-        Offer this chain to ${mine ? "the group" : "your group"}
-      </button>
+      ${offerControl}
     </div>`;
 }
 
-async function renderResults(roundId, roll) {
+async function renderResults(roundId, roll, liveProposal) {
   const res = await api(`/api/student/round/${roundId}/results`);
   const d = await res.json();
   if (!d.ready) return "";
@@ -178,32 +184,39 @@ async function renderResults(roundId, roll) {
   return `
     <div class="card">
       <h2>Round results &middot; chains you're part of</h2>
-      ${d.options.map(o => chainCard(o, roll)).join("")}
+      ${d.options.map(o => chainCard(o, roll, liveProposal)).join("")}
     </div>`;
 }
 
-async function renderProposals() {
-  const res = await api("/api/student/proposals");
-  const d = await res.json();
-  if (!d.proposals.length) {
+function renderProposals(proposals, roll) {
+  if (!proposals.length) {
     return `<div class="card"><h2>Pending offers</h2><p class="empty">No pending swap offers.</p></div>`;
   }
   return `
     <div class="card">
       <h2>Pending offers</h2>
-      ${d.proposals.map(p => `
+      ${proposals.map(p => {
+        // Show Accept/Reject only to a member who personally hasn't
+        // responded yet -- the proposal as a whole stays "proposed"
+        // until everyone has, so checking that status alone would also
+        // re-offer the buttons to whoever already approved (including
+        // the student who made the offer, who auto-approves on offer).
+        const mine = p.members.find(m => m.rollNo === roll);
+        const canRespond = p.status === "proposed" && mine && mine.approval === "pending";
+        return `
         <div class="proposal" data-id="${p.id}">
           <b>Chain of ${p.members.length} &middot; ${p.status}</b>
           <div class="members">
             ${p.members.map(m => `<div class="member"><span>${m.name}</span>
               <span class="tag ${m.approval}">${m.approval}</span></div>`).join("")}
           </div>
-          ${p.status === "proposed" ? `
+          ${canRespond ? `
             <div class="actions">
               <button class="accept" data-id="${p.id}">Accept</button>
               <button class="reject" data-id="${p.id}">Reject</button>
             </div>` : ""}
-        </div>`).join("")}
+        </div>`;
+      }).join("")}
     </div>`;
 }
 
@@ -260,6 +273,8 @@ async function render() {
   ROOM = roomRes.ok ? await roomRes.json() : null;
   const roundRes = await api("/api/student/round");
   ROUND = (await roundRes.json()).round;
+  const proposals = (await (await api("/api/student/proposals")).json()).proposals;
+  const liveProposal = proposals.some(p => p.status === "proposed" || p.status === "approved");
 
   const out = document.getElementById("out");
   let html = `
@@ -292,9 +307,9 @@ async function render() {
     html += await renderPriorities(ROUND.id);
   }
   if (ROUND) {
-    html += await renderResults(ROUND.id, me.rollNo);
+    html += await renderResults(ROUND.id, me.rollNo, liveProposal);
   }
-  html += await renderProposals();
+  html += renderProposals(proposals, me.rollNo);
 
   out.innerHTML = html;
 

@@ -265,14 +265,10 @@ def student_room(user: CurrentUser = Depends(require_student)):
 @app.get("/api/student/round")
 def student_round(user: CurrentUser = Depends(require_student)):
     connection = _connection()
-    room = db.fetch_student_room(connection, user.id)
-    if room is None:
+    status = db.fetch_student_round_status(connection, user.id)
+    if status is None:
         raise HTTPException(status_code=404, detail="no current room on file")
-    active = db.fetch_active_round_for_hostel(connection, room["hostelId"])
-    if active is None:
-        return {"round": None}
-    active["enrolled"] = db.fetch_enrollment(connection, active["id"], user.id)
-    return {"round": active}
+    return {"round": status["round"]}
 
 
 class EnrollBody(BaseModel):
@@ -386,6 +382,8 @@ def student_respond(
     connection = _connection()
     try:
         return rounds.respond(connection, proposal_id, user.roll_no, body.accept)
+    except rounds.InvalidRoundState as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
