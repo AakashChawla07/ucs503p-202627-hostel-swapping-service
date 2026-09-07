@@ -151,19 +151,29 @@ async function renderPriorities(roundId) {
     </div>`;
 }
 
-function chainCard(option, roll, liveProposal) {
-  const mine = option.members.find(m => m.rollNo === roll);
+function chainCard(option, roll, liveProposal, rank) {
   // A student can only be in one live (non-rejected) proposal at a time --
   // the server enforces this -- so once one exists, every other "offer"
   // button is dead regardless of which chain it points to.
-  const offerControl = liveProposal
-    ? `<button class="offer" disabled>You already have a pending offer -- see below</button>`
-    : `<button class="offer" data-kind="${option.optionKind}" data-chain="${option.chainNo}">
-         Offer this chain to ${mine ? "the group" : "your group"}
+  let offerControl;
+  if (liveProposal) {
+    // Checked before availability: to someone who has already offered,
+    // "you have a pending offer" explains the dead button better than
+    // "taken" does -- they are usually the ones who took it.
+    offerControl = `<button class="offer" disabled>You already have a pending offer -- see below</button>`;
+  } else if (!option.available) {
+    offerControl = `<button class="offer" disabled>Taken -- ${option.takenBy.join(", ")} committed to another swap</button>`;
+  } else {
+    offerControl = `<button class="offer" data-kind="${option.optionKind}" data-chain="${option.chainNo}">
+         Offer this chain to the group
        </button>`;
+  }
+  const heading = (option.available || liveProposal)
+    ? `${rank === 0 ? "Best option for you" : "Option " + (rank + 1)} &middot; ${option.myTo} at ${option.myMatch}% match`
+    : `No longer available &middot; ${option.myTo}`;
   return `
     <div class="chain">
-      <h3>${option.optionKind.replace("_", " ")} &middot; ${option.members.length} students move together</h3>
+      <h3>${heading} &middot; ${option.members.length} students move together</h3>
       ${option.members.map(m => `
         <div class="step">
           <span class="${m.rollNo === roll ? "me" : ""}">${m.name}${m.rollNo === roll ? " (you)" : ""}</span>
@@ -179,12 +189,19 @@ async function renderResults(roundId, roll, liveProposal) {
   const d = await res.json();
   if (!d.ready) return "";
   if (!d.options.length) {
-    return `<div class="card"><h2>Round results</h2><p class="empty">No swap chains include you this round.</p></div>`;
+    // Not "nothing was found" -- the matcher looked and every swap open
+    // to this student would have left them no better off than they are.
+    return `<div class="card"><h2>Your options</h2><p class="empty">No better options for you this
+      round. Nothing available beats the room you already have, given your priorities.</p></div>`;
   }
+  const live = d.options.filter(o => o.available).length;
   return `
     <div class="card">
-      <h2>Round results &middot; chains you're part of</h2>
-      ${d.options.map(o => chainCard(o, roll, liveProposal)).join("")}
+      <h2>Your options &middot; best for you first</h2>
+      <p class="muted">These chains can overlap with what other students are offered. Whoever
+      offers first reserves those rooms, so the rest stop being available.</p>
+      ${d.options.map((o, i) => chainCard(o, roll, liveProposal, i)).join("")}
+      ${live ? "" : `<p class="empty">Every option you had has been taken by someone else.</p>`}
     </div>`;
 }
 
