@@ -1,0 +1,746 @@
+\documentclass[11pt,a4paper]{report}
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{amsmath}
+
+% -----------------------------------------------------
+% bvraghav-tiet-ucs503p-article.sty
+%
+% NOTE: our template repo does not ship a `tietreport` class.
+% This document reuses the same title-block macros already proven
+% to compile in project-proposal/main.tex, on top of the `report`
+% class (rather than `article`) so \chapter is available.
+% -----------------------------------------------------
+
+% Variable: Lab Instructor
+\makeatletter \newcommand{\BvrSetLabInstructor}[1]{%
+  \gdef\Bvr@LabInstructor{#1}}
+% default
+\newcommand{\Bvr@LabInstructor}{Dr. Raghav %
+  B. Venkataramaiyer}
+% public accessor
+\newcommand{\BvrLabInstructorValue}{\Bvr@LabInstructor}
+\makeatother
+
+% Add subtitle
+\usepackage{titling}
+% -- Set title bold
+\pretitle{\begin{center}\bfseries\fontsize{18bp}{18bp}\selectfont}
+\makeatletter
+\newcommand{\BvrSubtitle}[1]{%
+  \posttitle{%
+    \par\end{center}
+    \begin{center}\large#1\end{center}
+    \vskip 0.5em}%
+}
+\makeatother
+
+% Hints in the section title(s)
+\newcommand{\BvrHint}[1]{%
+  {\normalfont\normalsize\itshape\hfill #1}}
+
+% -----------------------------------------------------
+
+\usepackage[
+  style=alphabetic,
+  backend=biber,
+  sorting=nty,
+  maxnames=5,
+  minnames=3,
+  doi=false,
+  isbn=false,
+  url=false,
+]{biblatex}
+\addbibresource{references.bib}
+
+% TODO: confirm all three email addresses before submitting.
+
+\title{Hostel Room Swapping Service}
+
+\BvrSetLabInstructor{Dr. Raghav B. Venkataramaiyer}
+
+\BvrSubtitle{%
+  A Multi-Party Hostel Room Exchange Matching Service \\[0.3em]
+  Project Report --- Prototype Stage, UCS503P \\
+  Group: \texttt{3C51} \\
+  Submitted to: \BvrLabInstructorValue \\ \bfseries
+  Thapar Institute of Engineering and Technology%
+}
+
+\author{
+  Aabhas Khandelwal, CSED%
+  \thanks{Roll No: \texttt{1024030673}, %
+    Email: \texttt{akhandelwal2\_be24\@thapar.edu}}
+  \and
+  Aakash Chawla, CSED%
+  \thanks{Roll No: \texttt{1024031097}, %
+    Email: \texttt{achawla1\_be24\@thapar.edu}}
+  \and
+  Joy Soni, CSED%
+  \thanks{Roll No: \texttt{1024030674}, %
+    Email: \texttt{jsoni\_be24\@thapar.edu}}
+}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+% ==================================================
+% CHAPTER 1: INTRODUCTION
+% ==================================================
+
+\chapter{Introduction}
+
+\section{Background and Context}
+
+Hostel room allotment assigns each student one room for the semester,
+but that allotment is fixed once made. A student who ends up on the
+wrong floor, facing the wrong direction, or away from friends has no
+structured way to change it. The informal remedy --- asking around,
+posting in a group chat --- only ever surfaces a handful of offers,
+and a workable trade almost always needs more than two people.
+
+A direct one-to-one swap requires two students to each want exactly
+what the other already has. That coincidence is rare. What usually
+does exist is a longer exchange: student A takes B's room, B takes
+C's, and C takes A's, leaving everyone better off. No single student
+can see that chain from inside their own conversation, because seeing
+it requires knowing every other student's current room and every
+other student's preference at once.
+
+This project treats room allocation as a visibility problem rather
+than a negotiation problem. The service holds every student's current
+room and every student's stated preference centrally, computes the
+exchange cycles hidden inside that data, and presents them back as
+concrete, executable swaps.
+
+\section{Problem Statement}
+
+Framed as requirements, a hostel room exchange service should:
+
+\begin{enumerate}
+    \item Accept a student's preference for a specific room, with a
+    defined fallback --- floor, then direction --- when that exact
+    room cannot be obtained.
+
+    \item Compute, from every participant's current room and stated
+    preference simultaneously, the assignment of maximum total
+    satisfaction across the group, not the loudest individual request.
+
+    \item Generate genuinely different alternative assignments, not
+    one answer marginally degraded, so that a shorter and more easily
+    approved exchange can be offered alongside the mathematically
+    optimal one.
+
+    \item Guarantee that no participant in an offered exchange ends up
+    worse off than their starting room, as a structural property of
+    the system rather than an incidental outcome.
+
+    \item Require every member of an exchange chain to individually
+    approve it before any room actually changes, and ensure one
+    member's refusal cannot silently affect any other exchange running
+    in the same round.
+
+    \item Preserve a complete, non-rewritable history of who held
+    which room and when, so that any executed swap is auditable after
+    the fact.
+\end{enumerate}
+
+\section{Project Objectives}
+
+\begin{enumerate}
+
+    \item \textbf{Closed-pool assignment.} Model the swap problem as a
+    permutation of students over the rooms they already collectively
+    hold, so that swap chains are not searched for separately but fall
+    directly out of the assignment's cycle structure.
+
+    \item \textbf{Optimal and alternative assignment.} Solve for the
+    single best assignment using a proven combinatorial algorithm,
+    and generate a bounded number of alternative assignments so that
+    a shorter, more executable chain can be preferred when it exists
+    at no cost to overall match quality.
+
+    \item \textbf{Feasibility filtering.} Discard any candidate
+    exchange that would leave a participant worse off, independent of
+    whatever the raw optimisation objective would otherwise select.
+
+    \item \textbf{A real approval workflow.} Model proposal,
+    approval, execution, rejection and expiry as an explicit state
+    machine, separate from the state machine that governs a matching
+    round itself.
+
+    \item \textbf{Persistent, auditable storage.} Store allocation
+    history as an append-only log in a managed relational database,
+    with database-level enforcement of that guarantee.
+
+    \item \textbf{Measurable evaluation.} Evaluate the engine against
+    a reproducible cohort using metrics that describe the whole
+    participant group, not only the students who moved.
+
+\end{enumerate}
+
+% ==================================================
+% CHAPTER 2: METHODOLOGY AND DESIGN
+% ==================================================
+
+\chapter{Methodology and Design}
+
+\section{System Architecture}
+
+The service is organised as a pipeline connecting a browser-based
+interface, a stateless API layer, a pure matching engine, and a
+managed relational database.
+
+The major components are:
+
+\begin{enumerate}
+    \item Admin and student web pages
+    \item FastAPI backend and session-based authentication
+    \item Preference and bed-slot modelling
+    \item Cost-matrix construction and scoring
+    \item Hungarian-algorithm assignment
+    \item Murty's-algorithm alternative generation
+    \item Cycle decomposition and Pareto feasibility filtering
+    \item Approval (proposal) state machine
+    \item PostgreSQL persistence with append-only allocation history
+\end{enumerate}
+
+The registration pipeline is:
+
+\begin{center}
+\textbf{
+Student Login
+$\rightarrow$
+Round Enrolment
+$\rightarrow$
+Weighted Priorities
+$\rightarrow$
+Stored Preference Set
+}
+\end{center}
+
+The matching pipeline is:
+
+\begin{center}
+\textbf{
+Round Locked
+$\rightarrow$
+Cost Matrix
+$\rightarrow$
+Hungarian Assignment
+$\rightarrow$
+Murty $K$-Best
+$\rightarrow$
+Cycle Decomposition
+$\rightarrow$
+Pareto Filter
+$\rightarrow$
+Proposals Offered
+}
+\end{center}
+
+Separating registration from matching, and matching from approval,
+means each stage can be developed, tested, and reasoned about
+independently: the round records what the engine found to be
+\emph{possible}, and the proposal state machine records what the
+participants actually \emph{agreed to}.
+
+\subsection{Web Interface}
+
+Two role-scoped web views sit in front of the service: a student view
+for enrolling in a round, setting priorities, and responding to
+proposed exchanges, and a warden (admin) view for creating and locking
+a round for a given hostel. Both are served as plain HTML/JavaScript
+pages by the same backend that exposes the API, so no separate
+frontend deployment is required at this stage. A migration to a
+React-based frontend is planned; because the pages consume the same
+JSON API a script or a framework component would, that migration does
+not require any change to the backend or matching engine.
+
+\subsection{FastAPI Backend}
+
+The backend exposes 27 endpoints across four groups: authentication
+(login, logout, session lookup), student actions (enrol, set
+priorities, view results, offer or respond to a proposal), admin
+actions (create, open, and lock a round; declare room-type inventory),
+and two diagnostic endpoints (\texttt{/api/schema}, which reports the
+live database structure, and \texttt{/api/demo}, a fixed-cohort
+endpoint used for reproducible evaluation, described in
+Section~\ref{sec:eval-methodology}). Every write endpoint that
+requires a specific role is rejected at the backend if the
+authenticated session does not hold that role.
+
+\subsection{Bed-Slot Modelling}
+\label{sec:bed-slot}
+
+A student's stated preferences --- hostel, floor, direction, room
+type, washroom --- are properties of a \emph{room}. Assignment,
+however, has to happen over a \emph{one-to-one} structure for the
+Hungarian algorithm to apply at all. A shared room with three beds is
+not one assignable unit; it is three. The system therefore assigns
+students to individual bed slots rather than rooms directly, with each
+room expanding into as many slots as its declared capacity. This
+keeps the assignment problem a clean permutation --- as many slots as
+participating students --- while still allowing shared rooms and
+mutual roommate requests to be expressed, without which the whole
+Hungarian/Murty formulation would not apply.
+
+\section{Preference Scoring}
+
+Each student's satisfaction with a candidate room is the fraction of
+their stated preference weight that room satisfies. Preferences are
+distinguished as hard or soft: an unmet soft preference lowers the
+score, while an unmet hard preference removes the room from
+consideration entirely rather than merely penalising it. In the
+current evaluation cohort, priorities follow a fixed fallback ladder
+--- a named room is worth more than its floor, which is worth more
+than its direction --- so that a student who cannot obtain their exact
+room still scores well for landing near where their friends are.
+
+\section{Matching Algorithm}
+
+The pool of participants in a round is closed: the only rooms
+available are the ones the participants already collectively hold.
+Consequently, any solution is a permutation of students over slots,
+and every permutation decomposes uniquely into disjoint cycles. Swap
+chains are therefore not searched for separately from the assignment
+--- they are already present inside it, and the system reads them out.
+
+\subsection{Assignment Optimisation}
+
+The Hungarian algorithm, via
+\texttt{scipy.optimize.linear\_sum\_assignment}
+\autocite{kuhn1955hungarian,virtanen2020scipy}, solves the
+students-by-slots cost matrix for the assignment of maximum total
+satisfaction in $O(n^3)$.
+
+\subsection{Alternative Generation}
+
+Murty's algorithm \autocite{murty1968ranking} enumerates the $K$ best
+assignments by repeatedly forbidding one edge of an already-found
+assignment and re-solving. This is a correctness requirement rather
+than a convenience feature: the single mathematically optimal
+assignment frequently demotes one participant to benefit several
+others, which the feasibility filter (Section~\ref{sec:feasibility})
+then rejects outright --- the alternatives are where an
+\emph{executable} exchange is actually found.
+
+\subsection{Swap Feasibility}
+\label{sec:feasibility}
+
+Each candidate assignment is decomposed into its disjoint exchange
+cycles. Because the cycles are disjoint, they execute independently:
+a single student withdrawing from one cycle provably cannot affect
+any other cycle in the same assignment. A Pareto filter then discards
+any cycle in which a participant would end up worse off than their
+current room, keeping only chains that every member has a rational
+reason to accept.
+
+\subsection{Alternatives Considered}
+
+Gale--Shapley stable matching \autocite{gale1962college} was
+considered and rejected: it assumes two-sided preferences, where both
+sides rank each other, and rooms hold no preference over students, so
+half the algorithm has no input. Top Trading Cycles
+\autocite{shapley1974cores} fits the exchange shape of the problem
+directly, but operates over a strict ranked list of items and cannot
+represent preferences that are weighted across several attributes at
+once, as ours are.
+
+\section{Approval Workflow}
+
+A candidate exchange chain is issued as a proposal, not applied
+immediately. Every member of the chain must individually approve it;
+a single rejection kills only that one proposal. A round moves through
+its own lifecycle --- draft, open, locked, running, completed ---
+independently of the approval state of the proposals it produced,
+which is what allows a round to be complete (the engine has run and
+produced its answer) while individual proposals inside it are still
+being negotiated.
+
+\section{Persistence}
+
+The schema spans 14 tables in a managed PostgreSQL database
+(Supabase): students and sessions; hostels and their declared
+room-type inventory; rooms and bed slots; the allocation history;
+preference sets; swap rounds and enrolments; and the proposal and
+swap-chain-member tables backing the approval workflow. Allocation
+history is append-only, enforced by a database trigger rather than by
+application-level convention, so a defect in a future client cannot
+silently rewrite who held which room and when.
+
+\section{Technical Stack}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.32\textwidth} p{0.53\textwidth}}
+\toprule
+\textbf{Component} & \textbf{Technology} \\
+\midrule
+Programming language & Python \\
+Backend framework & FastAPI \\
+Assignment solver & SciPy (\texttt{linear\_sum\_assignment}) \\
+Alternative generation & Murty's algorithm (in-house, over SciPy) \\
+Database & PostgreSQL (Supabase, managed) \\
+Authentication & Session cookies, server-side session table \\
+Testing & pytest \\
+CI/CD & GitHub Actions \\
+Frontend (current) & Server-rendered HTML / JavaScript \\
+Frontend (planned) & React \\
+\bottomrule
+\end{tabular}
+\caption{Technical Stack}
+\label{tab:techstack}
+\end{table}
+
+% ==================================================
+% CHAPTER 3: IMPLEMENTATION AND EVALUATION
+% ==================================================
+
+\chapter{Implementation and Evaluation}
+
+\section{Implementation}
+
+The matching engine is implemented as a pure Python package with no
+framework or database import anywhere in it, so it can be exercised
+and tested with no infrastructure running at all.
+
+\begin{itemize}
+    \item \texttt{scoring.py} --- preference weighting and match
+    calculation.
+    \item \texttt{matrix.py} --- students-by-slots cost matrix
+    construction.
+    \item \texttt{solver.py} --- Hungarian-algorithm assignment.
+    \item \texttt{kbest.py} --- Murty's $K$-best alternative search.
+    \item \texttt{cycles.py} --- cycle decomposition into exchange
+    chains.
+    \item \texttt{feasibility.py} --- the Pareto feasibility filter.
+    \item \texttt{ranking.py} --- candidate scoring and selection.
+    \item \texttt{proposal.py} --- the approval state machine.
+    \item \texttt{rounds.py} --- the round lifecycle and orchestration
+    of the pipeline above.
+    \item \texttt{db.py} --- the only module that speaks SQL; loads
+    and persists the same data shapes the engine consumes.
+    \item \texttt{auth.py} / \texttt{api.py} --- session
+    authentication and the FastAPI route layer.
+\end{itemize}
+
+\subsection{Round Lifecycle}
+
+A round for one hostel moves through \texttt{draft}
+$\rightarrow$ \texttt{open} $\rightarrow$ \texttt{locked}
+$\rightarrow$ \texttt{running} $\rightarrow$ \texttt{completed}.
+Locking a round is a one-way transition: it closes registration and
+triggers the matching pipeline in the same action, after which the
+round cannot return to \texttt{open}.
+
+\subsection{Proposal Lifecycle}
+
+Each offered exchange chain moves through \texttt{proposed}
+$\rightarrow$ \texttt{approved} $\rightarrow$ \texttt{executed}, or
+exits via \texttt{rejected} or \texttt{expired}. Execution appends new
+allocation rows for every member of the chain; no existing row is ever
+modified.
+
+\section{Evaluation Methodology}
+\label{sec:eval-methodology}
+
+No public benchmark exists for hostel room-swap matching, so the
+engine is evaluated against a reproducible synthetic cohort rather
+than an external dataset. A pool of 30 students, one per room, in a
+single hostel, was drawn once from a seeded random generator and
+frozen, so evaluation results are exactly reproducible run to run
+rather than depending on which random cohort happened to be sampled
+that day. Each student's priorities follow the room/floor/direction
+fallback ladder described in Section~\ref{sec:bed-slot}, with no
+preference toward the hostel itself, since every student in the
+cohort already lives there.
+
+The cohort is exercised through the service's own \texttt{/api/demo}
+endpoint, which runs the identical matching pipeline used by a real
+locked round, so the benchmark evaluates the engine's real code path
+rather than a simulation of it.
+
+\section{Evaluation Metrics}
+
+\subsection{Cohort Preference Satisfaction}
+
+The primary metric is the mean weighted match score across
+\emph{every} participant in the cohort, computed before and after one
+matching round --- not only across the students who moved. This is a
+deliberate choice: averaging over movers alone would rank a two-person
+swap in which both reach 100\% ahead of an eleven-person rotation that
+lifts the entire cohort, which is not the outcome the service exists
+to produce.
+
+\subsection{Exact-Room, Floor, and Direction Fulfilment}
+
+Secondary metrics report the proportion of the cohort receiving the
+exact room they named, the proportion receiving at least their
+requested floor, and the proportion receiving at least their requested
+direction --- the three rungs of the fallback ladder.
+
+\subsection{Participants Left Worse Off}
+
+This count must be zero by construction, since the Pareto filter
+(Section~\ref{sec:feasibility}) discards any chain violating it; it is
+reported as a measured value rather than assumed, to confirm the
+filter behaves as specified on real data rather than only in unit
+tests.
+
+\subsection{Longest Simultaneous-Approval Chain}
+
+The size of the largest exchange cycle in the offered assignment,
+reported because it is the practical execution risk of a chain: every
+additional member is one more independent approval that must be
+obtained before the whole chain can execute.
+
+\section{Experimental Configurations}
+
+Two configurations of the same pipeline were evaluated on the frozen
+cohort, differing only in $K$, the number of alternative assignments
+Murty's algorithm explores before the best candidate is selected:
+
+\begin{enumerate}
+    \item \textbf{$K = 1$:} only the single mathematically optimal
+    assignment is considered.
+    \item \textbf{$K = 80$ (production):} the full Murty's search is
+    run, and the assignment maximising cohort satisfaction is
+    selected from among the alternatives, breaking ties toward a
+    shorter longest chain.
+\end{enumerate}
+
+\section{Results}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{lcc}
+\toprule
+\textbf{Metric} & \textbf{$K=1$} & \textbf{$K=80$} \\
+\midrule
+Cohort satisfaction, before $\to$ after & 11\% $\to$ 77\% & 11\% $\to$ 77\% \\
+Students moved & 28 / 30 & 28 / 30 \\
+Received exact requested room & 20 / 30 & 20 / 30 \\
+Participants left worse off & 0 & 0 \\
+Longest simultaneous-approval chain & 28 & 11 \\
+\bottomrule
+\end{tabular}
+\caption{Matching Engine Evaluation, Frozen 30-Student Cohort}
+\label{tab:evaluation}
+\end{table}
+
+\section{Analysis of Results}
+
+\subsection{Match Quality Is Unaffected by $K$}
+
+Cohort satisfaction, the count of students moved, and the count
+receiving their exact requested room are identical at $K=1$ and
+$K=80$. On this cohort, exploring alternative assignments does not
+trade away any match quality at all.
+
+\subsection{Executability Is Not}
+
+The longest chain requiring simultaneous approval falls from 28
+students to 11 between the two configurations, at no cost measured
+above. A chain of 28 means 28 independent people must each agree
+before anything executes, and a single hold-out anywhere in that chain
+blocks the entire exchange. A chain of 11 carries proportionally less
+of that risk, and because the underlying cycles are disjoint by
+construction (Section~\ref{sec:feasibility}), a shorter maximum chain
+generally also means the assignment is expressible as several smaller
+independent chains rather than one large one.
+
+\subsection{Zero Worse Off, Confirmed on Real Data}
+
+The Pareto guarantee is a property proved of the filter's logic in
+unit tests; Table~\ref{tab:evaluation} confirms it also holds when the
+filter is exercised against a full 30-student assignment rather than a
+small hand-constructed case.
+
+\section{Comparative Analysis}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{p{0.30\textwidth} p{0.55\textwidth}}
+\toprule
+\textbf{Observation} & \textbf{Interpretation} \\
+\midrule
+
+Satisfaction identical at $K=1$ and $K=80$ &
+Murty's alternative search finds a more executable assignment without
+sacrificing overall match quality on this cohort. \\
+
+Longest chain: 28 at $K=1$, 11 at $K=80$ &
+Far fewer simultaneous approvals are required for the same outcome,
+directly reducing the practical risk of the exchange collapsing before
+it executes. \\
+
+20 of 30 receive their exact requested room &
+The majority of demand is satisfiable without falling back to floor
+or direction on this cohort. \\
+
+0 participants worse off, in both configurations &
+The feasibility filter's guarantee held with no exception across the
+full assignment, not only on average. \\
+
+\bottomrule
+\end{tabular}
+\caption{Comparison of Evaluated Configurations}
+\label{tab:comparison}
+\end{table}
+
+These results are the concrete justification for including Murty's
+algorithm in the design at all: a single Hungarian solve would have
+been sufficient if match quality were the only concern, but it is not
+--- an assignment that cannot realistically be approved is not a
+useful answer, and $K$-best search is what turns an optimal-on-paper
+assignment into one that is also practical to execute.
+
+\section{Software Engineering Process}
+
+The full automated test suite --- 127 tests --- runs in approximately
+two seconds with no live database, a direct consequence of the
+matching engine importing no framework or database driver: unit and
+scenario tests exercise the pure Python pipeline directly, and only a
+small, isolated set of tests exercises the PostgreSQL integration path
+so the rest of the suite remains hermetic on a machine with no
+database credentials at all. GitHub Actions runs the suite on every
+push and pull request, across Python 3.10, 3.11, and 3.12.
+
+Three defects surfaced only once real infrastructure was in the loop,
+each caught before it reached a shared environment:
+
+\begin{itemize}[leftmargin=0.7cm]
+    \item A preference criterion added to the Python model was never
+    added to the corresponding PostgreSQL enum, which would have
+    rejected the very first insert against a fresh database.
+    \item A database driver installed by hand on a development
+    machine was never declared as a project dependency, so it worked
+    locally and failed immediately in a clean CI environment.
+    \item A deliberate offline fallback --- used so a demo cannot be
+    broken by a database outage --- initially made a genuine
+    misconfiguration indistinguishable from a correctly working
+    system, until the API response was made to report which data
+    source it had actually used.
+\end{itemize}
+
+% ==================================================
+% CHAPTER 4: CONCLUSION
+% ==================================================
+
+\chapter{Conclusion}
+
+\section{Summary of Work}
+
+The prototype implements a complete pipeline from student preference
+submission through to an executed room swap: a pure matching engine
+combining the Hungarian algorithm with Murty's $K$-best alternative
+search and a Pareto feasibility filter; a proposal-based approval
+workflow layered on top of a separate round lifecycle; and a
+PostgreSQL-backed persistence layer with an enforced append-only
+allocation history. A session-authenticated web interface exposes
+both a student role and a warden (admin) role over the same backend.
+
+\section{Key Findings}
+
+\begin{enumerate}
+
+    \item \textbf{The engine finds exchanges no participant could see
+    alone.} Multi-party chains are read directly out of a computed
+    permutation rather than searched for separately.
+
+    \item \textbf{Alternative-assignment search reduces execution
+    risk at no measured cost to match quality.} On the evaluated
+    cohort, raising $K$ cut the longest simultaneous-approval chain
+    from 28 students to 11 while leaving cohort satisfaction
+    unchanged.
+
+    \item \textbf{The feasibility guarantee held with zero
+    exceptions} across the full evaluated assignment, not only in
+    isolated unit tests.
+
+    \item \textbf{The system performs practically.} The evaluated
+    30-student assignment computes in well under a second, and the
+    matching engine's freedom from framework and database dependencies
+    keeps the automated test suite fast enough to run on every push.
+
+    \item \textbf{Testing against real infrastructure caught real
+    defects.} Three separate issues --- a schema/model mismatch, an
+    undeclared dependency, and a silent fallback --- were each found
+    because the prototype was exercised against a genuine database
+    and CI pipeline early, rather than only against hand-written unit
+    tests.
+
+\end{enumerate}
+
+\section{Limitations}
+
+\begin{itemize}[leftmargin=0.7cm]
+
+    \item The engine has been evaluated against a seeded synthetic
+    cohort, not yet against real student registrations for a live
+    hostel.
+
+    \item Shared (multi-bed) rooms and mutual roommate requests are
+    supported by the bed-slot model and scoring function, but are not
+    exercised by the current evaluation cohort, which uses one student
+    per room so every chain reads as an unambiguous rotation.
+
+    \item Proposal expiry and round cancellation exist in the state
+    model but have not yet been demonstrated end-to-end on a live
+    clock.
+
+    \item The frontend is presently server-rendered HTML/JavaScript
+    rather than the React frontend named in the project proposal.
+
+\end{itemize}
+
+\section{Future Work}
+
+\begin{enumerate}
+
+    \item Onboard real student preference registrations for at least
+    one hostel, replacing the seeded evaluation cohort.
+
+    \item Exercise shared rooms and mutual roommate matching
+    end-to-end, including on the live evaluation cohort.
+
+    \item Demonstrate the reject, expiry, and round-cancellation
+    paths live rather than only in the test suite.
+
+    \item Migrate the frontend to React against the existing,
+    unchanged API contract.
+
+    \item Evaluate the engine at larger cohort sizes to characterise
+    how satisfaction, chain length, and solve time scale together.
+
+\end{enumerate}
+
+\section{Final Remarks}
+
+This prototype demonstrates that a hostel's worth of room-swap
+requests can be resolved as a single closed assignment problem, with
+the exchange chains falling directly out of that assignment's cycle
+structure rather than being searched for separately. The evaluation
+shows that generating alternative assignments is not merely an
+academic completeness exercise: on the tested cohort it produced a
+markedly more executable outcome --- an 11-person longest chain in
+place of a 28-person one --- without giving up any measured match
+quality. The remaining work is primarily about exercising paths the
+architecture already supports against real data, rather than
+redesigning the underlying approach.
+
+% ==================================================
+% BIBLIOGRAPHY
+% ==================================================
+
+\printbibliography[heading=bibintoc]
+
+\end{document}
