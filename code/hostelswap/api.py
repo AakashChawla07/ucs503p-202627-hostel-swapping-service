@@ -4,8 +4,8 @@ import logging
 from pathlib import Path
 from statistics import fmean
 
-from fastapi import Depends, FastAPI, HTTPException, Response
-from fastapi.responses import FileResponse
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Response
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -26,7 +26,6 @@ logging.basicConfig(
 )
 
 app = FastAPI(title="Hostel Swap")
-PAGE = Path(__file__).parent / "index.html"
 LOGIN_PAGE = Path(__file__).parent / "login.html"
 STUDENT_PAGE = Path(__file__).parent / "student.html"
 ADMIN_PAGE = Path(__file__).parent / "admin.html"
@@ -107,7 +106,7 @@ def current_pool():
 
 @app.get("/")
 def home():
-    return FileResponse(PAGE)
+    return RedirectResponse(url="/login")
 
 
 @app.get("/login")
@@ -235,7 +234,16 @@ def login(body: LoginBody, response: Response):
 
 
 @app.post("/api/auth/logout")
-def logout(response: Response, user: CurrentUser = Depends(auth.current_user)):
+def logout(
+    response: Response,
+    session: str | None = Cookie(default=None, alias=auth.COOKIE_NAME),
+    user: CurrentUser = Depends(auth.current_user),
+):
+    # Drop the row and the cached copy of it, not just the cookie: a
+    # token that outlives the logout would still authenticate anyone
+    # holding it until the cache entry aged out.
+    db.delete_session(_connection(), session)
+    auth.forget_session(session)
     response.delete_cookie(auth.COOKIE_NAME)
     return {"ok": True}
 
@@ -290,10 +298,10 @@ def student_enroll(round_id: str, body: EnrollBody, user: CurrentUser = Depends(
 @app.get("/api/student/round/{round_id}/room-types")
 def student_room_types(round_id: str, user: CurrentUser = Depends(require_student)):
     connection = _connection()
-    round_data = db.fetch_round(connection, round_id)
-    if round_data is None:
+    room_types = db.fetch_round_room_types(connection, round_id)
+    if room_types is None:
         raise HTTPException(status_code=404, detail="no such round")
-    return {"roomTypes": db.fetch_room_type_catalog(connection, round_data["hostelId"])}
+    return {"roomTypes": room_types}
 
 
 class PriorityItem(BaseModel):
@@ -331,15 +339,51 @@ def student_priorities(
 
 @app.get("/api/student/round/{round_id}/results")
 def student_results(round_id: str, user: CurrentUser = Depends(require_student)):
+    """The chains this student could take, best for them first.
+
+    Options are recommendations, not a plan: two students can be looking
+    at chains that cannot both happen. The first to offer reserves its
+    members, and every other chain containing any of them is marked
+    taken here rather than failing only when someone clicks offer.
+    """
     connection = _connection()
-    round_data = db.fetch_round(connection, round_id)
-    if round_data is None:
+    results = db.fetch_round_results(connection, round_id)
+    if results is None:
         raise HTTPException(status_code=404, detail="no such round")
-    if round_data["status"] != "completed":
+    if results["status"] != "completed":
         return {"ready": False, "options": []}
-    chains = db.fetch_chain_options(connection, round_id)
-    mine = [c for c in chains if any(m["rollNo"] == user.roll_no for m in c["members"])]
-    return {"ready": True, "options": mine}
+
+    mine = []
+    for chain in results["options"]:
+        me = next((m for m in chain["members"] if m["rollNo"] == user.roll_no), None)
+        if me is None:
+            continue
+        taken = [
+            m["name"] for m in chain["members"]
+            if m["committed"] and m["rollNo"] != user.roll_no
+        ]
+        mine.append(
+            chain | {
+                "myMatch": me["match"],
+                "myFrom": me["from"],
+                "myTo": me["to"],
+                "available": not taken,
+                "takenBy": taken,
+            }
+        )
+
+    # Best for this student first, and among equals the chain with the
+    # fewest people who have to agree. Chains gone to someone else sink
+    # to the bottom instead of disappearing, so the page can say why.
+    mine.sort(key=lambda c: (not c["available"], -c["myMatch"], len(c["members"])))
+
+    # Several chains can land this student in the same room and differ
+    # only in who else moves. That is one choice to them, so keep the
+    # shortest way to each room they could reach and drop the rest.
+    by_room: dict[str, dict] = {}
+    for chain in mine:
+        by_room.setdefault(chain["myTo"], chain)
+    return {"ready": True, "options": list(by_room.values())[:rounds.PER_STUDENT_OPTIONS]}
 
 
 class OfferBody(BaseModel):

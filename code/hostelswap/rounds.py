@@ -10,12 +10,22 @@ from datetime import datetime, timedelta, timezone
 from statistics import fmean
 
 from . import db
-from .domain.pipeline import find_swap_options
+from .domain.pipeline import recommend_chains
 from .domain.proposal import InvalidTransition, Move, Proposal, ProposalStatus, Response
 from .domain.proposal import execute as domain_execute
 from .domain.proposal import respond as domain_respond
 
 PROPOSAL_LIFETIME = timedelta(days=3)
+
+# How many chains each student is shown. They overlap by design -- see
+# `candidate_chains` -- so more of them means more students with
+# something to choose from, and more races for the same rooms.
+PER_STUDENT_OPTIONS = 3
+
+# Chains are now recommendations addressed to a student rather than
+# hostel-wide plans, so they no longer carry a "best overall"/"fastest"
+# label; `chain_no` alone identifies one within a round.
+OPTION_KIND = "recommended"
 
 
 class InvalidRoundState(Exception):
@@ -54,20 +64,22 @@ def lock_and_run(connection_string: str, round_id: str, k: int = 50) -> dict:
     db.set_round_status(connection_string, round_id, "running")
 
     round_pool = db.load_round_pool(connection_string, round_id)
-    options = find_swap_options(round_pool.pool, k)
+    # Every chain a student could reasonably be offered, not the single
+    # best plan for the hostel: the students who are not in that one plan
+    # would otherwise be told there is nothing for them when there is.
+    offers = recommend_chains(round_pool.pool, k, PER_STUDENT_OPTIONS)
 
     rows = [
         {
-            "kind": option.kind.value,
+            "kind": OPTION_KIND,
             "chain_no": chain_no,
             "student_id": round_pool.student_uuid[student_id],
-            "from_slot_id": round_pool.slot_uuid[option.outcomes[student_id].from_slot_id],
-            "to_slot_id": round_pool.slot_uuid[option.outcomes[student_id].to_slot_id],
-            "match_value": option.outcomes[student_id].match.value,
+            "from_slot_id": round_pool.slot_uuid[offer.outcomes[student_id].from_slot_id],
+            "to_slot_id": round_pool.slot_uuid[offer.outcomes[student_id].to_slot_id],
+            "match_value": offer.outcomes[student_id].match.value,
         }
-        for option in options
-        for chain_no, chain in enumerate(option.chains)
-        for student_id in chain.students
+        for chain_no, offer in enumerate(offers)
+        for student_id in offer.students
     ]
 
     db.clear_chain_options(connection_string, round_id)
@@ -79,7 +91,7 @@ def lock_and_run(connection_string: str, round_id: str, k: int = 50) -> dict:
     )
     return {
         "roundId": round_id,
-        "options": len(options),
+        "options": len(offers),
         "chains": len({(r["kind"], r["chain_no"]) for r in rows}),
     }
 

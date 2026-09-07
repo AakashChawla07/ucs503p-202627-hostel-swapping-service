@@ -372,6 +372,25 @@ def fetch_room_type_catalog(connection_string: str, hostel_id: str) -> list[dict
         return [{"roomType": rt, "quantity": qty} for rt, qty in cur.fetchall()]
 
 
+def fetch_round_room_types(connection_string: str, round_id: str) -> list[dict] | None:
+    """The catalog for the hostel a round belongs to, without looking the
+    round up first. None means there is no such round."""
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            select i.room_type, i.quantity
+            from swap_rounds r
+            left join hostel_room_type_inventory i on i.hostel_id = r.hostel_id
+            where r.id = %s order by i.room_type
+            """,
+            (round_id,),
+        )
+        rows = cur.fetchall()
+    if not rows:
+        return None
+    return [{"roomType": rt, "quantity": qty} for rt, qty in rows if rt is not None]
+
+
 def upsert_room_type_quantity(
     connection_string: str, hostel_id: str, room_type: str, quantity: int
 ) -> None:
@@ -658,6 +677,81 @@ def insert_chain_options(connection_string: str, round_id: str, rows: list[dict]
             [{"round_id": round_id, **r} for r in rows],
         )
         conn.commit()
+
+
+def fetch_round_results(connection_string: str, round_id: str) -> dict | None:
+    """Round status, its chain options, and who is already committed --
+    in one round trip.
+
+    The three reads this replaces were each a separate trip to the
+    database, which on a remote instance costs more than the query
+    itself. `left join` on the options so a round with none still
+    returns its status rather than nothing.
+    """
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            select r.status,
+                   o.option_kind, o.chain_no, s.id, s.roll_no, s.name,
+                   fh.code, fr.room_no, tr.room_no, o.match_value,
+                   o.from_slot_id, o.to_slot_id,
+                   exists (
+                       select 1 from swap_chain_members m
+                       where m.student_id = s.id and m.approval <> 'rejected'
+                   ) as committed
+            from swap_rounds r
+            left join round_chain_options o on o.round_id = r.id
+            left join students s on s.id = o.student_id
+            left join bed_slots fb on fb.id = o.from_slot_id
+            left join rooms fr on fr.id = fb.room_id
+            left join hostels fh on fh.id = fr.hostel_id
+            left join bed_slots tb on tb.id = o.to_slot_id
+            left join rooms tr on tr.id = tb.room_id
+            where r.id = %s
+            order by o.option_kind, o.chain_no, s.roll_no
+            """,
+            (round_id,),
+        )
+        rows = cur.fetchall()
+
+    if not rows:
+        return None
+
+    status = rows[0][0]
+    chains: dict[tuple[str, int], list[dict]] = {}
+    for (_, kind, chain_no, student_id, roll_no, name, code, from_no, to_no,
+         match_value, from_slot, to_slot, committed) in rows:
+        if kind is None:  # round exists but has no options
+            continue
+        chains.setdefault((kind, chain_no), []).append({
+            "studentId": str(student_id), "rollNo": roll_no, "name": name,
+            "from": f"{code}-{from_no}", "to": f"{code}-{to_no}",
+            "match": round(float(match_value) * 100),
+            "fromSlotId": str(from_slot), "toSlotId": str(to_slot),
+            "committed": committed,
+        })
+    return {
+        "status": status,
+        "options": [
+            {"optionKind": kind, "chainNo": chain_no, "members": members}
+            for (kind, chain_no), members in chains.items()
+        ],
+    }
+
+
+def committed_students(connection_string: str) -> set[str]:
+    """Students already spoken for by a live or executed proposal.
+
+    A rejected proposal releases everyone in it, so those rows are the
+    only ones that do not count. Anyone else here has their rooms
+    reserved, which makes every recommended chain they appear in
+    unavailable to the rest of the round.
+    """
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "select distinct student_id from swap_chain_members where approval <> 'rejected'"
+        )
+        return {str(row[0]) for row in cur.fetchall()}
 
 
 def fetch_chain_options(connection_string: str, round_id: str) -> list[dict]:

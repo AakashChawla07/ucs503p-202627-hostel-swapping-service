@@ -145,3 +145,80 @@ def rank(
         chosen.append(winner.with_kind(kind))
 
     return tuple(chosen)
+
+
+# --------------------------------------------------------------------------
+# Per-student recommendations
+# --------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ChainOffer:
+    """One executable chain, offered on its own.
+
+    Chains are disjoint cycles, so any one of them can run without the
+    assignment it was found in. That is what lets a student be shown
+    several chains that contradict each other: only the first one
+    actually offered locks its members in.
+    """
+    chain: Chain
+    outcomes: Mapping[str, Outcome]
+    mean_match: float
+
+    @property
+    def students(self) -> tuple[str, ...]:
+        return self.chain.students
+
+
+def _offer(pool: SwapPool, matrix: CostMatrix, assignment: Assignment, chain: Chain) -> ChainOffer:
+    outcomes = {
+        student_id: Outcome(
+            student_id=student_id,
+            from_slot_id=pool.current_slot_id(student_id),
+            to_slot_id=assignment.slot_by_student[student_id],
+            match=matrix.score_for(student_id, assignment.slot_by_student[student_id]),
+            delta=delta(pool, matrix, student_id, assignment.slot_by_student[student_id]),
+        )
+        for student_id in chain.students
+    }
+    return ChainOffer(
+        chain=chain,
+        outcomes=outcomes,
+        mean_match=fmean(o.match.value for o in outcomes.values()),
+    )
+
+
+def candidate_chains(
+    pool: SwapPool,
+    matrix: CostMatrix,
+    candidates: Iterable[Assignment],
+    per_student: int = 3,
+) -> tuple[ChainOffer, ...]:
+    """Every distinct chain worth offering, across all candidate assignments.
+
+    `rank` answers "what is the single best plan for the hostel?", which
+    hands most students nothing: one two-person swap where both reach
+    100% beats a rotation that lifts twenty. This answers the other
+    question -- "what is the best move available to *me*?" -- by keeping
+    every Pareto-improving chain any candidate produced and trimming it
+    to each student's own best `per_student`.
+
+    The chains that survive overlap on purpose. Two students may be
+    looking at chains that cannot both execute; whoever offers first
+    takes the rooms, and the loser falls back to their next option.
+    """
+    offers: dict[tuple[str, ...], ChainOffer] = {}
+    for assignment in candidates:
+        for chain in feasible_chains(pool, matrix, assignment, decompose(pool, assignment)):
+            if chain.students not in offers:
+                offers[chain.students] = _offer(pool, matrix, assignment, chain)
+
+    # A student's own ranking: how well the chain serves them, and among
+    # equals the chain with fewer people to talk round.
+    kept: set[tuple[str, ...]] = set()
+    for student in pool.students:
+        theirs = [key for key in offers if student.id in key]
+        theirs.sort(key=lambda k: (-offers[k].outcomes[student.id].match.value, len(k)))
+        kept.update(theirs[:per_student])
+
+    order = sorted(kept, key=lambda k: (-offers[k].mean_match, len(k)))
+    return tuple(offers[k] for k in order)

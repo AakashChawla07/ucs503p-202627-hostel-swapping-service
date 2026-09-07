@@ -8,6 +8,7 @@ only), and a session is an opaque random token stored server-side in
 import hashlib
 import os
 import secrets
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
@@ -18,6 +19,20 @@ from . import db
 COOKIE_NAME = "hostelswap_session"
 SESSION_LIFETIME = timedelta(days=7)
 _ITERATIONS = 200_000
+
+# Every authenticated request used to re-read the session row, so one
+# page load paid that round trip six or seven times over. The token is
+# opaque and the row it resolves to changes only on logout, which clears
+# this cache, so a short memory of it is safe. It is per process, so a
+# restart or a second worker simply reads the row again.
+SESSION_CACHE_TTL = 30.0
+_session_cache: dict[str, tuple[float, "CurrentUser"]] = {}
+
+
+def forget_session(token: str | None) -> None:
+    """Drop a cached session, so a logout takes effect immediately."""
+    if token:
+        _session_cache.pop(token, None)
 
 
 def hash_password(password: str) -> str:
@@ -57,10 +72,18 @@ def current_user(
     connection = db.dsn()
     if not connection or not session:
         raise HTTPException(status_code=401, detail="not logged in")
+
+    cached = _session_cache.get(session)
+    if cached is not None and cached[0] > time.monotonic():
+        return cached[1]
+
     row = db.fetch_session_user(connection, session)
     if row is None:
+        _session_cache.pop(session, None)
         raise HTTPException(status_code=401, detail="session expired or invalid")
-    return CurrentUser(**row)
+    user = CurrentUser(**row)
+    _session_cache[session] = (time.monotonic() + SESSION_CACHE_TTL, user)
+    return user
 
 
 def require_role(role: str):

@@ -121,14 +121,21 @@ def seed(dsn: str) -> None:
     print(f"login as student: {roll_no(0)} / {DEMO_PASSWORD}  (any seeded roll number works)")
 
 
-def main() -> int:
+def resolve_dsn() -> str | None:
+    """DATABASE_URL from the environment, else from the .env beside the repo."""
     dsn = os.environ.get("DATABASE_URL")
-    if not dsn:
-        env = pathlib.Path(__file__).resolve().parents[1] / ".env"
-        if env.exists():
-            for line in env.read_text().splitlines():
-                if line.startswith("DATABASE_URL="):
-                    dsn = line.split("=", 1)[1].strip().strip('"').strip("'")
+    if dsn:
+        return dsn
+    env = pathlib.Path(__file__).resolve().parents[1] / ".env"
+    if env.exists():
+        for line in env.read_text().splitlines():
+            if line.startswith("DATABASE_URL="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return None
+
+
+def main() -> int:
+    dsn = resolve_dsn()
     if not dsn:
         print("DATABASE_URL is not set. Put it in .env or export it.", file=sys.stderr)
         return 1
