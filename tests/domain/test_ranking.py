@@ -1,6 +1,8 @@
+import pytest
+
 from hostelswap.domain.matrix import build_matrix
 from hostelswap.domain.preferences import Criterion, Preference, PreferenceSet
-from hostelswap.domain.ranking import OptionKind, rank
+from hostelswap.domain.ranking import OptionKind, candidate_chains, rank
 from hostelswap.domain.solver import Assignment
 from tests.factories import make_pool, room
 
@@ -140,3 +142,36 @@ def test_dominated_not_shown():
     options = ranked(LONG, MID, SHORT)
 
     assert all(o.chains[0].length != 3 for o in options)
+
+
+# --- max_chain ---------------------------------------------------------
+# Every member of a ring has to accept before it executes, so a cap on
+# ring length is a cap on how many people one offer depends on.
+
+
+def chains(*candidates, **kwargs):
+    pool = ring_pool()
+    return candidate_chains(pool, build_matrix(pool), candidates, **kwargs)
+
+
+def test_uncapped_keeps_the_long_ring():
+    lengths = {offer.chain.length for offer in chains(LONG, MID, SHORT)}
+
+    assert 4 in lengths
+
+
+def test_max_chain_drops_longer_rings():
+    offers = chains(LONG, MID, SHORT, max_chain=3)
+
+    assert offers
+    assert all(offer.chain.length <= 3 for offer in offers)
+
+
+def test_max_chain_can_empty_the_set():
+    # The only feasible ring here is the four-way rotation.
+    assert chains(LONG, max_chain=3) == ()
+
+
+def test_max_chain_below_two_is_rejected():
+    with pytest.raises(ValueError, match="at least 2"):
+        chains(SHORT, max_chain=1)

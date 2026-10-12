@@ -27,6 +27,15 @@ PER_STUDENT_OPTIONS = 3
 # label; `chain_no` alone identifies one within a round.
 OPTION_KIND = "recommended"
 
+# The longest ring of students one offer may ask to move together.
+# Capping it trades reach for offers that close: on 300-student cohorts
+# a cap of 8 reaches 58% of students against 72% uncapped, but asks six
+# fewer people to agree than the rings an uncapped run produces -- and
+# every one of them has to accept before anybody moves. An admin can
+# override it per run through the lock-and-run endpoint; None there
+# means no limit at all.
+MAX_CHAIN: int | None = 8
+
 
 class InvalidRoundState(Exception):
     pass
@@ -55,7 +64,9 @@ def save_priorities(
     db.replace_preferences(connection_string, student_id, round_id, priorities)
 
 
-def lock_and_run(connection_string: str, round_id: str, k: int = 50) -> dict:
+def lock_and_run(
+    connection_string: str, round_id: str, k: int = 50, max_chain: int | None = MAX_CHAIN
+) -> dict:
     round_data = _require_round(connection_string, round_id)
     if round_data["status"] != "open":
         raise InvalidRoundState(f"round must be open to run, is {round_data['status']}")
@@ -67,7 +78,7 @@ def lock_and_run(connection_string: str, round_id: str, k: int = 50) -> dict:
     # Every chain a student could reasonably be offered, not the single
     # best plan for the hostel: the students who are not in that one plan
     # would otherwise be told there is nothing for them when there is.
-    offers = recommend_chains(round_pool.pool, k, PER_STUDENT_OPTIONS)
+    offers = recommend_chains(round_pool.pool, k, PER_STUDENT_OPTIONS, max_chain)
 
     rows = [
         {

@@ -1,0 +1,24 @@
+# Runtime and test dependencies, pinned to the versions this project is
+# developed and tested against. Mirrors [project.dependencies] and the
+# "dev" extra in pyproject.toml -- update both together.
+#
+#   python -m venv .venv
+#   .venv/bin/pip install -r requirements.txt
+#   .venv/bin/pip install -e .        # the hostelswap package itself
+
+# --- matching engine -------------------------------------------------
+numpy==2.5.2
+scipy==1.18.1          # Hungarian assignment (linear_sum_assignment)
+
+# --- web service -----------------------------------------------------
+fastapi==0.141.1
+uvicorn==0.52.4
+
+# --- postgres --------------------------------------------------------
+# [binary] ships the C driver so no local libpq is needed; [pool] is the
+# connection pool db.py keeps per DSN.
+psycopg[binary,pool]==3.3.4
+
+# --- tests -----------------------------------------------------------
+pytest==9.1.1
+httpx2==2.12.0         # required by fastapi.testclient

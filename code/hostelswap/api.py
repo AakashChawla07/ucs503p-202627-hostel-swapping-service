@@ -492,10 +492,21 @@ def admin_open_round(round_id: str, user: CurrentUser = Depends(require_admin)):
 
 
 @app.post("/api/admin/rounds/{round_id}/lock-and-run")
-def admin_lock_and_run(round_id: str, k: int = 50, user: CurrentUser = Depends(require_admin)):
+def admin_lock_and_run(
+    round_id: str,
+    k: int = 50,
+    max_chain: int | None = rounds.MAX_CHAIN,
+    user: CurrentUser = Depends(require_admin),
+):
+    """`max_chain` limits how many students one offer may move together;
+    omit it to use the round default. Validated here rather than letting
+    the domain's ValueError through, which this endpoint reports as a
+    missing round."""
     connection = _connection()
+    if max_chain is not None and max_chain < 2:
+        raise HTTPException(status_code=400, detail="max_chain must be at least 2")
     try:
-        return rounds.lock_and_run(connection, round_id, k)
+        return rounds.lock_and_run(connection, round_id, k, max_chain)
     except rounds.InvalidRoundState as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:

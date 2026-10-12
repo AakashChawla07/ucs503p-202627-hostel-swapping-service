@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; font: 14px system-ui, -apple-system, sans-serif; background: #fcfcfb; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<title>How Far a Swap Reaches</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one slide on screen at a time, centred in a fixed frame; chrome pinned bottom. */
+:root {
+  --bg: #fbfbfa;
+  --surface: #ffffff;
+  --ink: #16181d;
+  --ink-2: #4e535e;
+  --ink-3: #7d828c;
+  --rule: #e2e4e8;
+  --rule-strong: #c9ccd3;
+  --accent: #2a78d6;
+  --cap5: #86b6ef;
+  --cap8: #2a78d6;
+  --cap10: #104281;
+  --warn: #8a5a00;
+  --font-display: "Spectral", "Iowan Old Style", Georgia, serif;
+  --font-body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #15161a; --surface: #1c1e23; --ink: #f2f3f5; --ink-2: #b4b9c2; --ink-3: #868c96;
+    --rule: #2d3037; --rule-strong: #43474f; --accent: #6da7ec;
+    --cap5: #184f95; --cap8: #3987e5; --cap10: #cde2fb; --warn: #e0a83c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #15161a; --surface: #1c1e23; --ink: #f2f3f5; --ink-2: #b4b9c2; --ink-3: #868c96;
+  --rule: #2d3037; --rule-strong: #43474f; --accent: #6da7ec;
+  --cap5: #184f95; --cap8: #3987e5; --cap10: #cde2fb; --warn: #e0a83c;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+.deck {
+  min-height: 100%;
+  display: grid; grid-template-rows: 1fr auto;
+  padding-inline: 20px; padding-block: 0;
+}
+.stage { display: grid; align-items: center; justify-items: center; min-height: 0; }
+.slide {
+  width: 100%; max-width: 980px; padding-block: 40px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.eyebrow {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 12px;
+}
+h1 {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: clamp(34px, 6.4vw, 54px); line-height: 1.05; letter-spacing: -0.02em;
+  margin: 0 0 16px; text-wrap: balance;
+}
+h2 {
+  font-family: var(--font-display); font-weight: 600;
+  font-size: clamp(24px, 4vw, 34px); line-height: 1.14;
+  margin: 0 0 10px; text-wrap: balance;
+}
+p { margin: 0 0 14px; max-width: 66ch; color: var(--ink-2); }
+p.lead { font-size: clamp(16px, 2.1vw, 19px); color: var(--ink); max-width: 56ch; }
+p:last-child { margin-bottom: 0; }
+strong { color: var(--ink); font-weight: 600; }
+.num, code { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+code { font-size: 0.92em; }
+a { color: var(--accent); text-underline-offset: 3px; }
+
+.meta {
+  display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 26px;
+  padding-top: 18px; border-top: 1px solid var(--rule);
+  font-family: var(--font-mono); font-size: 12px; color: var(--ink-3);
+}
+.meta b { color: var(--ink-2); font-weight: 500; }
+
+/* stat row */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--rule); margin: 8px 0 18px; }
+.stat { background: var(--surface); padding: 20px 18px; min-width: 0; }
+.stat .k { font-family: var(--font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 7px; }
+.stat .v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: clamp(30px, 5.6vw, 42px); font-weight: 500; line-height: 1.08; margin-top: 10px; }
+.stat .s { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; display: inline-block; }
+
+/* charts */
+.chart-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 18px; margin: 10px 0 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.unit { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); }
+.plot { width: 100%; max-height: 46vh; margin-inline: auto; }
+.plot svg { display: block; width: 100%; height: 100%; }
+svg text { font-family: var(--font-mono); fill: var(--ink-3); font-size: 11px; }
+svg text.val { fill: var(--ink); font-size: 11px; font-weight: 500; }
+svg text.axis-title { fill: var(--ink-3); font-size: 10.5px; letter-spacing: .06em; }
+.grid line { stroke: var(--rule); stroke-width: 1; }
+.base { stroke: var(--rule-strong); stroke-width: 1; }
+.hit { fill: transparent; }
+.takeaway { font-size: 13.5px; color: var(--ink-3); margin-top: 10px; max-width: 76ch; }
+
+/* notes / recommendation */
+.notes { display: grid; gap: 1px; background: var(--rule); margin-top: 8px; }
+.note { background: var(--surface); padding: 15px 17px; }
+.note p { margin: 0; font-size: 13.5px; max-width: 72ch; }
+.note .tag { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--warn); display: block; margin-bottom: 5px; }
+.note.plain .tag { color: var(--ink-3); }
+.verdict {
+  border-left: 3px solid var(--accent); padding: 4px 0 4px 18px; margin: 4px 0 20px;
+}
+.verdict p { font-size: clamp(16px, 2.1vw, 19px); color: var(--ink); max-width: 58ch; margin: 0; }
+
+/* table */
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; margin-top: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 9px 13px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { font-size: 11px; font-family: var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); font-weight: 500; background: var(--surface); }
+tbody td { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-2); }
+tbody td:first-child { font-family: var(--font-body); color: var(--ink); font-weight: 500; }
+tbody tr:last-child td { border-bottom: 0; }
+.capdot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 8px; }
+
+/* chrome */
+.chrome {
+  display: flex; align-items: center; gap: 14px;
+  padding-block: 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--rule);
+}
+.dots { display: flex; gap: 7px; flex: 1; flex-wrap: wrap; }
+.dot {
+  width: 9px; height: 9px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--rule-strong); cursor: pointer;
+}
+.dot[aria-current="true"] { background: var(--accent); }
+.dot:focus-visible, .nav:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.nav {
+  font-family: var(--font-mono); font-size: 12px; color: var(--ink-2);
+  background: var(--surface); border: 1px solid var(--rule-strong);
+  border-radius: 4px; padding: 6px 12px; cursor: pointer;
+}
+.nav[disabled] { opacity: .4; cursor: default; }
+.count { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+#tip {
+  position: fixed; z-index: 10; pointer-events: none; opacity: 0; transition: opacity .1s linear;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--rule-strong); border-radius: 5px;
+  padding: 7px 9px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5;
+  box-shadow: 0 4px 14px rgba(0,0,0,.14); max-width: 240px;
+}
+#tip b { display: block; font-weight: 500; margin-bottom: 2px; }
+#tip em { font-style: normal; color: var(--ink-3); }
+
+@media (max-width: 620px) {
+  .stats { grid-template-columns: 1fr; }
+  .plot { max-height: none; }
+  .slide { padding-block: 28px; }
+}
+@media (prefers-reduced-motion: reduce) { #tip { transition: none; } }
+</style>
+
+</head>
+<body>
+<div class="deck">
+  <div class="stage">
+
+    <section class="slide" id="s1">
+      <p class="eyebrow">Hostel swap engine &middot; benchmark</p>
+      <h1>How far a swap has to reach before it helps anyone</h1>
+      <p class="lead">A shorter swap chain is easier to agree on &mdash; fewer people have to say yes. It also throws away most of the matches. Measured on 300-student cohorts, raising the cap from 5 to 10 more than doubles the share of students who get an offer at all.</p>
+      <div class="meta">
+        <span><b>Cohort</b> 300 students, one hostel</span>
+        <span><b>Search</b> Hungarian + Murty, K = 200</span>
+        <span><b>Repeats</b> 10 seeded cohorts per cap</span>
+        <span><b>Baseline</b> 34.4% satisfaction</span>
+      </div>
+    </section>
+
+    <section class="slide" id="s2" hidden>
+      <p class="eyebrow">01 &middot; Headline</p>
+      <h2>Students who receive at least one executable offer</h2>
+      <div class="stats" id="stats"></div>
+      <p>Mean across 10 cohorts. A student counts when at least one Pareto-improving chain within the cap includes them: nobody in that chain ends up worse off, and at least one person ends up better.</p>
+    </section>
+
+    <section class="slide" id="s3" hidden>
+      <p class="eyebrow">02 &middot; Comparison</p>
+      <h2>Three measures, three caps</h2>
+      <div class="chart-head">
+        <div class="legend" id="legend-1"></div>
+        <span class="unit">% of cohort &middot; bar = mean, whisker = &plusmn;1&sigma;</span>
+      </div>
+      <div class="plot" style="aspect-ratio:900/340"><svg id="chart-grouped" viewBox="0 0 900 340" role="img" aria-label="Grouped bars comparing offered, served and satisfaction across chain caps 5, 8 and 10"></svg></div>
+      <p class="takeaway"><strong>Offered</strong> is how many students have an option. <strong>Served</strong> is how many can execute at once, since chains compete for the same rooms. Served barely moves from cap 8 to cap 10 &mdash; long chains crowd each other out, so the extra reach buys choice, not throughput.</p>
+    </section>
+
+    <section class="slide" id="s4" hidden>
+      <p class="eyebrow">03 &middot; Spread</p>
+      <h2>The gap survives the noise</h2>
+      <div class="chart-head">
+        <div class="legend" id="legend-2"></div>
+        <span class="unit">offered % &middot; one dot per seeded cohort</span>
+      </div>
+      <div class="plot" style="aspect-ratio:900/300"><svg id="chart-strip" viewBox="0 0 900 300" role="img" aria-label="Dot strip plot of offered percentage for each of ten cohorts, per chain cap"></svg></div>
+      <p class="takeaway">The three bands never overlap: the worst cap-10 cohort still beats the best cap-5 cohort by 10 points. Within a single cap, cohorts vary by up to 24 points &mdash; which is why this needs ten runs and not one.</p>
+    </section>
+
+    <section class="slide" id="s5" hidden>
+      <p class="eyebrow">04 &middot; Scale</p>
+      <h2>Why the cohort has to be large to see this</h2>
+      <div class="chart-head">
+        <div class="legend" id="legend-3"></div>
+        <span class="unit">offered % &middot; log scale on cohort size</span>
+      </div>
+      <div class="plot" style="aspect-ratio:900/330"><svg id="chart-scale" viewBox="0 0 900 330" role="img" aria-label="Offered percentage against cohort size from 20 to 300 students, one line per chain cap"></svg></div>
+      <p class="takeaway">At 20 students a chain of 10 is half the hostel, so the cap barely binds and all three settings land within 5 points of each other. By 300 students the cap-5 and cap-10 lines are 44 points apart. A small demo cohort would have hidden the effect entirely.</p>
+    </section>
+
+    <section class="slide" id="s6" hidden>
+      <p class="eyebrow">05 &middot; Recommendation</p>
+      <h2>Cap 8 is the operating point</h2>
+      <div class="verdict">
+        <p>Cap 8 reaches 58% of the cohort and 58.9% satisfaction. Cap 10 adds 14 points of reach for 2 points of satisfaction and two more people per chain who all have to agree.</p>
+      </div>
+      <div class="notes">
+        <div class="note"><span class="tag">Not built yet</span><p>The engine has no chain-length cap. <code>candidate_chains</code> does not limit length; these caps were applied to its output. Enforcing one needs a <code>max_chain</code> parameter through <code>recommend_chains</code> and <code>lock_and_run</code>.</p></div>
+        <div class="note"><span class="tag">Mind the default</span><p>A live round runs K = 50. On 300 students that reaches 58.8% at cap 10 against the 85.0% measured at K = 200, so quoting these figures beside a live demo needs the budget raised to match.</p></div>
+        <div class="note plain"><span class="tag">Cost</span><p>K = 200 on 300 students takes 51&ndash;68 s of search per cohort. The full study &mdash; 3 caps over 10 cohorts, sharing one search each &mdash; ran in 9.5 minutes, entirely in memory on synthetic pools.</p></div>
+      </div>
+    </section>
+
+    <section class="slide" id="s7" hidden>
+      <p class="eyebrow">06 &middot; Data</p>
+      <h2>Every figure in the deck</h2>
+      <div class="tablewrap">
+        <table id="datatable">
+          <thead><tr>
+            <th>Chain cap</th><th>Offered %</th><th>Served %</th><th>Satisfaction %</th><th>Chains found</th><th>Mean length</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p style="margin-top:16px">Mean &plusmn; standard deviation over 10 seeded cohorts of 300 students, K = 200; baseline satisfaction <span class="num">34.4%</span>. Cohorts come from <code>hostelswap.synth.generator</code>, seeds 1&ndash;10.</p>
+      <p>The full write-up, including the search-budget sensitivity table, is on the <a href="https://claude.ai/artifact/1HmbGkg8kDdYSEEy3ZspwA">Chain Cap Benchmark</a> report page.</p>
+    </section>
+
+  </div>
+
+  <div class="chrome">
+    <div class="dots" id="dots" role="tablist" aria-label="Slides"></div>
+    <span class="count" id="count">1 / 7</span>
+    <button class="nav" id="prev" type="button" aria-label="Previous slide">&larr; Prev</button>
+    <button class="nav" id="next" type="button" aria-label="Next slide">Next &rarr;</button>
+  </div>
+</div>
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var CAPS = [5, 8, 10];
+  var COLOR = { 5: "var(--cap5)", 8: "var(--cap8)", 10: "var(--cap10)" };
+  var AGG = {
+    5:  { offered: [28.0, 7.2], served: [23.5, 5.6], sat: [47.7, 3.3], chains: [28.0, 7.2], len: [3.6, 0.1] },
+    8:  { offered: [57.8, 8.8], served: [42.7, 6.2], sat: [58.9, 4.0], chains: [53.0, 12.0], len: [5.2, 0.2] },
+    10: { offered: [71.9, 9.0], served: [46.5, 7.0], sat: [61.0, 4.1], chains: [68.1, 14.2], len: [6.2, 0.2] }
+  };
+  var SEEDS = {
+    5:  [40.33, 39.0, 18.67, 26.67, 23.67, 16.67, 27.33, 27.67, 31.33, 28.33],
+    8:  [73.67, 56.33, 49.0, 54.0, 59.0, 42.67, 62.0, 50.33, 65.0, 66.33],
+    10: [85.0, 69.0, 66.33, 74.33, 70.0, 50.33, 74.67, 70.33, 80.67, 78.0]
+  };
+  var SCALE = {
+    sizes: [20, 40, 60, 80, 100, 300],
+    5:  [80.0, 73.8, 52.8, 44.8, 38.9, 28.0],
+    8:  [85.0, 89.8, 83.2, 73.0, 70.7, 57.8],
+    10: [85.0, 90.5, 90.2, 88.2, 83.8, 71.9]
+  };
+  var BASELINE = 34.4;
+
+  var SVGNS = "http://www.w3.org/2000/svg";
+  function el(name, attrs, text) {
+    var n = document.createElementNS(SVGNS, name);
+    for (var k in attrs) if (attrs[k] !== null) n.setAttribute(k, attrs[k]);
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function fmt(v) { return v.toFixed(1); }
+
+  /* ---------- tooltip ---------- */
+  var tip = document.getElementById("tip");
+  function bind(node, title, lines) {
+    function show(e) {
+      tip.innerHTML = "<b>" + title + "</b>" + lines.join("<br>");
+      tip.style.opacity = "1";
+      var r = tip.getBoundingClientRect();
+      tip.style.left = Math.min(e.clientX + 14, window.innerWidth - r.width - 8) + "px";
+      tip.style.top = Math.max(e.clientY - r.height - 12, 8) + "px";
+    }
+    node.addEventListener("pointerenter", show);
+    node.addEventListener("pointermove", show);
+    node.addEventListener("pointerleave", function () { tip.style.opacity = "0"; });
+  }
+
+  /* ---------- legends, tiles, table ---------- */
+  ["legend-1", "legend-2", "legend-3"].forEach(function (id) {
+    var host = document.getElementById(id);
+    CAPS.forEach(function (c) {
+      var s = document.createElement("span");
+      s.innerHTML = '<i class="swatch" style="background:' + COLOR[c] + '"></i>cap ' + c;
+      host.appendChild(s);
+    });
+  });
+
+  var statHost = document.getElementById("stats");
+  CAPS.forEach(function (c) {
+    var d = document.createElement("div");
+    d.className = "stat";
+    d.innerHTML =
+      '<div class="k"><span class="swatch" style="background:' + COLOR[c] + '"></span>chain cap ' + c + '</div>' +
+      '<div class="v">' + fmt(AGG[c].offered[0]) + '%</div>' +
+      '<div class="s">' + Math.round(AGG[c].offered[0] * 3) + ' of 300 students &middot; satisfaction ' + fmt(AGG[c].sat[0]) + '%</div>';
+    statHost.appendChild(d);
+  });
+
+  var tb = document.querySelector("#datatable tbody");
+  CAPS.forEach(function (c) {
+    var a = AGG[c], tr = document.createElement("tr");
+    var first = document.createElement("td");
+    first.innerHTML = '<span class="capdot" style="background:' + COLOR[c] + '"></span>at most ' + c;
+    tr.appendChild(first);
+    [fmt(a.offered[0]) + " &plusmn; " + fmt(a.offered[1]),
+     fmt(a.served[0]) + " &plusmn; " + fmt(a.served[1]),
+     fmt(a.sat[0]) + " &plusmn; " + fmt(a.sat[1]),
+     a.chains[0].toFixed(0) + " &plusmn; " + fmt(a.chains[1]),
+     fmt(a.len[0])].forEach(function (html) {
+      var td = document.createElement("td"); td.innerHTML = html; tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+
+  /* ---------- chart 1: grouped bars ---------- */
+  (function () {
+    var svg = document.getElementById("chart-grouped");
+    var W = 900, H = 340, L = 54, R = 16, T = 18, B = 58;
+    var iw = W - L - R, ih = H - T - B;
+    var y = function (v) { return T + ih - (v / 100) * ih; };
+    var groups = [
+      { key: "offered", label: "Offered an option" },
+      { key: "served", label: "Served at once" },
+      { key: "sat", label: "Satisfaction after" }
+    ];
+    var g = el("g", { "class": "grid" });
+    [0, 25, 50, 75, 100].forEach(function (v) {
+      g.appendChild(el("line", { x1: L, x2: L + iw, y1: y(v), y2: y(v) }));
+      svg.appendChild(el("text", { x: L - 10, y: y(v) + 4, "text-anchor": "end" }, v + "%"));
+    });
+    svg.insertBefore(g, svg.firstChild);
+
+    var gw = iw / groups.length, bw = 54, gap = 14;
+    groups.forEach(function (grp, gi) {
+      var cx = L + gw * gi + gw / 2;
+      var total = CAPS.length * bw + (CAPS.length - 1) * gap;
+      CAPS.forEach(function (c, ci) {
+        var d = AGG[c][grp.key];
+        var x = cx - total / 2 + ci * (bw + gap);
+        svg.appendChild(el("path", {
+          d: "M" + x + " " + (T + ih) + " V" + (y(d[0]) + 4) +
+             " q0 -4 4 -4 h" + (bw - 8) + " q4 0 4 4 V" + (T + ih) + " Z",
+          fill: COLOR[c]
+        }));
+        var hi = Math.min(d[0] + d[1], 100), lo = Math.max(d[0] - d[1], 0), mx = x + bw / 2;
+        svg.appendChild(el("line", { x1: mx, x2: mx, y1: y(hi), y2: y(lo), stroke: "var(--ink-3)", "stroke-width": 1.5 }));
+        svg.appendChild(el("line", { x1: mx - 5, x2: mx + 5, y1: y(hi), y2: y(hi), stroke: "var(--ink-3)", "stroke-width": 1.5 }));
+        svg.appendChild(el("line", { x1: mx - 5, x2: mx + 5, y1: y(lo), y2: y(lo), stroke: "var(--ink-3)", "stroke-width": 1.5 }));
+        svg.appendChild(el("text", { x: mx, y: y(hi) - 10, "text-anchor": "middle", "class": "val" }, fmt(d[0]) + "%"));
+        var hit = el("rect", { x: x - 3, y: T, width: bw + 6, height: ih, "class": "hit" });
+        bind(hit, "Cap " + c + " &middot; " + grp.label, [
+          "mean " + fmt(d[0]) + "%",
+          "<em>sd</em> " + fmt(d[1]) + " &middot; <em>range</em> " + fmt(lo) + "&ndash;" + fmt(hi) + "%"
+        ]);
+        svg.appendChild(hit);
+      });
+      svg.appendChild(el("text", { x: cx, y: T + ih + 24, "text-anchor": "middle", "class": "val" }, grp.label));
+    });
+    svg.appendChild(el("line", {
+      x1: L + gw * 2, x2: L + iw, y1: y(BASELINE), y2: y(BASELINE),
+      stroke: "var(--ink-3)", "stroke-width": 1.5, "stroke-dasharray": "5 4"
+    }));
+    svg.appendChild(el("text", { x: L + iw - 2, y: y(BASELINE) - 7, "text-anchor": "end" }, "baseline 34.4%"));
+    svg.appendChild(el("line", { x1: L, x2: L + iw, y1: T + ih, y2: T + ih, "class": "base" }));
+    svg.appendChild(el("text", { x: L, y: H - 12, "class": "axis-title" }, "% OF THE 300-STUDENT COHORT"));
+  })();
+
+  /* ---------- chart 2: dot strip ---------- */
+  (function () {
+    var svg = document.getElementById("chart-strip");
+    var W = 900, H = 300, L = 54, R = 16, T = 16, B = 54;
+    var iw = W - L - R, ih = H - T - B, lo = 10, hi = 95;
+    var y = function (v) { return T + ih - ((v - lo) / (hi - lo)) * ih; };
+    var g = el("g", { "class": "grid" });
+    [10, 30, 50, 70, 90].forEach(function (v) {
+      g.appendChild(el("line", { x1: L, x2: L + iw, y1: y(v), y2: y(v) }));
+      svg.appendChild(el("text", { x: L - 10, y: y(v) + 4, "text-anchor": "end" }, v + "%"));
+    });
+    svg.insertBefore(g, svg.firstChild);
+
+    var bandW = iw / CAPS.length;
+    CAPS.forEach(function (c, ci) {
+      var cx = L + bandW * ci + bandW / 2;
+      var m = AGG[c].offered[0], sd = AGG[c].offered[1];
+      var top = Math.min(m + sd, hi);
+      svg.appendChild(el("rect", {
+        x: cx - 92, y: y(top), width: 184, height: Math.abs(y(m - sd) - y(top)),
+        fill: COLOR[c], opacity: 0.12
+      }));
+      svg.appendChild(el("line", { x1: cx - 92, x2: cx + 92, y1: y(m), y2: y(m), stroke: COLOR[c], "stroke-width": 2 }));
+      svg.appendChild(el("text", { x: cx + 96, y: y(m) + 4, "class": "val" }, "mean " + fmt(m) + "%"));
+      SEEDS[c].forEach(function (v, i) {
+        var dx = cx - 63 + i * 14;
+        svg.appendChild(el("circle", { cx: dx, cy: y(v), r: 5, fill: COLOR[c], stroke: "var(--bg)", "stroke-width": 2 }));
+        var hit = el("circle", { cx: dx, cy: y(v), r: 11, "class": "hit" });
+        bind(hit, "Cap " + c + " &middot; seed " + (i + 1), [fmt(v) + "% offered an option", "<em>" + Math.round(v * 3) + " of 300 students</em>"]);
+        svg.appendChild(hit);
+      });
+      svg.appendChild(el("text", { x: cx, y: T + ih + 26, "text-anchor": "middle", "class": "val" }, "cap " + c));
+    });
+    svg.appendChild(el("line", { x1: L, x2: L + iw, y1: T + ih, y2: T + ih, "class": "base" }));
+    svg.appendChild(el("text", { x: L, y: H - 12, "class": "axis-title" }, "EACH DOT IS ONE SEEDED COHORT"));
+  })();
+
+  /* ---------- chart 3: offered vs cohort size ---------- */
+  (function () {
+    var svg = document.getElementById("chart-scale");
+    var W = 900, H = 330, L = 54, R = 72, T = 20, B = 56;
+    var iw = W - L - R, ih = H - T - B, sizes = SCALE.sizes;
+    var lx = Math.log(sizes[0]), hx = Math.log(sizes[sizes.length - 1]);
+    var x = function (n) { return L + ((Math.log(n) - lx) / (hx - lx)) * iw; };
+    var y = function (v) { return T + ih - (v / 100) * ih; };
+    var g = el("g", { "class": "grid" });
+    [0, 25, 50, 75, 100].forEach(function (v) {
+      g.appendChild(el("line", { x1: L, x2: L + iw, y1: y(v), y2: y(v) }));
+      svg.appendChild(el("text", { x: L - 10, y: y(v) + 4, "text-anchor": "end" }, v + "%"));
+    });
+    svg.insertBefore(g, svg.firstChild);
+
+    CAPS.forEach(function (c) {
+      var pts = SCALE[c].map(function (v, i) { return [x(sizes[i]), y(v)]; });
+      svg.appendChild(el("path", {
+        d: pts.map(function (p, i) { return (i ? "L" : "M") + p[0] + " " + p[1]; }).join(" "),
+        fill: "none", stroke: COLOR[c], "stroke-width": 2, "stroke-linejoin": "round"
+      }));
+      pts.forEach(function (p, i) {
+        svg.appendChild(el("circle", { cx: p[0], cy: p[1], r: 4.5, fill: COLOR[c], stroke: "var(--bg)", "stroke-width": 2 }));
+        var hit = el("circle", { cx: p[0], cy: p[1], r: 12, "class": "hit" });
+        bind(hit, "Cap " + c + " &middot; " + sizes[i] + " students", [fmt(SCALE[c][i]) + "% offered an option"]);
+        svg.appendChild(hit);
+      });
+      var last = pts[pts.length - 1];
+      svg.appendChild(el("text", { x: last[0] + 10, y: last[1] + 4, "class": "val" }, "cap " + c));
+    });
+    sizes.forEach(function (n) {
+      svg.appendChild(el("line", { x1: x(n), x2: x(n), y1: T + ih, y2: T + ih + 5, stroke: "var(--rule-strong)" }));
+      svg.appendChild(el("text", { x: x(n), y: T + ih + 20, "text-anchor": "middle" }, n));
+    });
+    svg.appendChild(el("line", { x1: L, x2: L + iw, y1: T + ih, y2: T + ih, "class": "base" }));
+    svg.appendChild(el("text", { x: L, y: H - 12, "class": "axis-title" }, "STUDENTS IN THE COHORT (LOG SCALE)"));
+  })();
+
+  /* ---------- deck navigation ---------- */
+  var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+  var dots = document.getElementById("dots");
+  var count = document.getElementById("count");
+  var prev = document.getElementById("prev");
+  var next = document.getElementById("next");
+  var at = 0;
+
+  slides.forEach(function (s, i) {
+    var b = document.createElement("button");
+    b.className = "dot";
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-label", "Slide " + (i + 1));
+    b.addEventListener("click", function () { go(i); });
+    dots.appendChild(b);
+  });
+
+  function go(i) {
+    at = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach(function (s, j) { s.hidden = j !== at; });
+    Array.prototype.forEach.call(dots.children, function (d, j) {
+      d.setAttribute("aria-current", j === at ? "true" : "false");
+    });
+    count.textContent = (at + 1) + " / " + slides.length;
+    prev.disabled = at === 0;
+    next.disabled = at === slides.length - 1;
+    tip.style.opacity = "0";
+    var token = "s" + (at + 1);
+    if (location.hash !== "#" + token) {
+      try { history.replaceState(null, "", "#" + token); } catch (err) { /* sandboxed */ }
+    }
+  }
+
+  prev.addEventListener("click", function () { go(at - 1); });
+  next.addEventListener("click", function () { go(at + 1); });
+  document.addEventListener("keydown", function (e) {
+    if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { go(at + 1); e.preventDefault(); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { go(at - 1); e.preventDefault(); }
+    else if (e.key === "Home") { go(0); }
+    else if (e.key === "End") { go(slides.length - 1); }
+  });
+
+  var start = (location.hash || "").replace("#", "");
+  var found = slides.findIndex(function (s) { return s.id === start; });
+  go(found > -1 ? found : 0);
+})();
+</script>
+</body>
+</html>

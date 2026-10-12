@@ -20,8 +20,14 @@ def find_swap_options(pool: SwapPool, k: int = DEFAULT_K) -> tuple[SwapOption, .
     return rank(pool, matrix, k_best(matrix, k))
 
 
-def recommend_chains(pool: SwapPool, k: int = DEFAULT_K, per_student: int = 3) -> tuple[ChainOffer, ...]:
+def recommend_chains(
+    pool: SwapPool,
+    k: int = DEFAULT_K,
+    per_student: int = 3,
+    max_chain: int | None = None,
+) -> tuple[ChainOffer, ...]:
     """Every chain worth putting in front of a student, not one plan for
-    the hostel. See `candidate_chains` for why the two differ."""
+    the hostel. See `candidate_chains` for why the two differ, and for
+    what `max_chain` costs."""
     matrix = build_matrix(pool)
-    return candidate_chains(pool, matrix, k_best(matrix, k), per_student)
+    return candidate_chains(pool, matrix, k_best(matrix, k), per_student, max_chain)
