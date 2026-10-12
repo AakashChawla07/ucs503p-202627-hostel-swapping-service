@@ -26,12 +26,30 @@ logging.basicConfig(
 )
 
 app = FastAPI(title="Hostel Swap")
-LOGIN_PAGE = Path(__file__).parent / "login.html"
-STUDENT_PAGE = Path(__file__).parent / "student.html"
-ADMIN_PAGE = Path(__file__).parent / "admin.html"
+
+# The web UI is a built React bundle. `webui/` is checked in, so the
+# server needs no Node toolchain to run; rebuild it with
+# `npm --prefix frontend run build` after changing anything under
+# frontend/src.
+WEBUI = Path(__file__).parent / "webui"
 ASSETS = Path(__file__).parents[2] / "assets"
+if WEBUI.is_dir():
+    app.mount("/webui", StaticFiles(directory=WEBUI), name="webui")
 if ASSETS.is_dir():
     app.mount("/assets", StaticFiles(directory=ASSETS), name="assets")
+
+
+def page() -> FileResponse:
+    """The single-page app. Every signed-in route renders the same
+    bundle; which screen appears is the router's business, not ours."""
+    index = WEBUI / "index.html"
+    if not index.is_file():
+        raise HTTPException(
+            status_code=503,
+            detail="web UI is not built: run `npm --prefix frontend install && "
+                   "npm --prefix frontend run build`",
+        )
+    return FileResponse(index)
 
 # Murty's explores K alternative assignments. Measured on this pool every
 # K reaches the same 80% satisfaction, but a larger K finds a shorter
@@ -111,17 +129,17 @@ def home():
 
 @app.get("/login")
 def login_page():
-    return FileResponse(LOGIN_PAGE)
+    return page()
 
 
 @app.get("/student")
 def student_page():
-    return FileResponse(STUDENT_PAGE)
+    return page()
 
 
 @app.get("/admin")
 def admin_page():
-    return FileResponse(ADMIN_PAGE)
+    return page()
 
 
 @app.get("/api/schema")
@@ -337,6 +355,58 @@ def student_priorities(
     return {"ok": True}
 
 
+class RoommateBody(BaseModel):
+    rollNo: str
+
+
+class RoommateAnswerBody(BaseModel):
+    accept: bool
+
+
+@app.get("/api/student/round/{round_id}/roommate")
+def student_roommate(round_id: str, user: CurrentUser = Depends(require_student)):
+    """The pairing this student asked for, and the asks awaiting them."""
+    return db.fetch_roommate_state(_connection(), round_id, user.id)
+
+
+@app.post("/api/student/round/{round_id}/roommate")
+def student_request_roommate(
+    round_id: str, body: RoommateBody, user: CurrentUser = Depends(require_student)
+):
+    connection = _connection()
+    try:
+        return rounds.request_roommate(connection, round_id, user.id, body.rollNo.strip())
+    except rounds.InvalidRoundState as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except db.NoSuchStudent as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/student/round/{round_id}/roommate")
+def student_withdraw_roommate(round_id: str, user: CurrentUser = Depends(require_student)):
+    connection = _connection()
+    try:
+        rounds.withdraw_roommate(connection, round_id, user.id)
+    except rounds.InvalidRoundState as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
+
+
+@app.post("/api/student/roommate-requests/{request_id}/respond")
+def student_answer_roommate(
+    request_id: str, body: RoommateAnswerBody, user: CurrentUser = Depends(require_student)
+):
+    connection = _connection()
+    try:
+        return {"status": rounds.answer_roommate(connection, request_id, user.id, body.accept)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/api/student/round/{round_id}/results")
 def student_results(round_id: str, user: CurrentUser = Depends(require_student)):
     """The chains this student could take, best for them first.
@@ -511,6 +581,14 @@ def admin_lock_and_run(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/admin/rounds/{round_id}/summary")
+def admin_round_summary(round_id: str, user: CurrentUser = Depends(require_admin)):
+    summary = db.fetch_round_summary(_connection(), round_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="no such round")
+    return {"summary": summary}
 
 
 @app.get("/api/admin/rounds/{round_id}/proposals")

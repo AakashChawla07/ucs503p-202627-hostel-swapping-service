@@ -61,7 +61,44 @@ def save_priorities(
     round_data = _require_round(connection_string, round_id)
     if round_data["status"] != "open":
         raise InvalidRoundState("priorities are locked once the round is running")
-    db.replace_preferences(connection_string, student_id, round_id, priorities)
+    # A roommate pairing needs the other student's consent, so it is held
+    # in roommate_requests and never as a preference row -- dropping it
+    # here keeps a hand-written request from bypassing that.
+    room_only = [p for p in priorities if p.get("criterion") != "roommate"]
+    db.replace_preferences(connection_string, student_id, round_id, room_only)
+
+
+def request_roommate(
+    connection_string: str, round_id: str, student_id: str, addressee_roll: str
+) -> dict:
+    """Ask another student to be clubbed with for this round.
+
+    Only while registration is open: after the lock the matcher has
+    already read the pairings, so an answer arriving later could not
+    change anything.
+    """
+    round_data = _require_round(connection_string, round_id)
+    if round_data["status"] != "open":
+        raise InvalidRoundState("roommate requests close with registration")
+    return db.upsert_roommate_request(connection_string, round_id, student_id, addressee_roll)
+
+
+def withdraw_roommate(connection_string: str, round_id: str, student_id: str) -> None:
+    round_data = _require_round(connection_string, round_id)
+    if round_data["status"] != "open":
+        raise InvalidRoundState("roommate requests close with registration")
+    db.withdraw_roommate_request(connection_string, round_id, student_id)
+
+
+def answer_roommate(
+    connection_string: str, request_id: str, student_id: str, accept: bool
+) -> str:
+    """Accept or refuse a pairing someone asked you for.
+
+    Refusing is not a judgement the matcher sees: an unanswered and a
+    refused request are both simply absent from the scoring.
+    """
+    return db.respond_to_roommate_request(connection_string, request_id, student_id, accept)
 
 
 def lock_and_run(

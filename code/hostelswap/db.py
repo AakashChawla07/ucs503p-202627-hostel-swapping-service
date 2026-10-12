@@ -534,6 +534,133 @@ def replace_preferences(
         conn.commit()
 
 
+# --------------------------------------------------------------------------
+# Roommate pairing
+#
+# A roommate preference names another student, so one student asserting it
+# alone would let them drag someone into their plans. It is stored as a
+# request the other student answers, and only an accepted one reaches the
+# matcher -- see the preference query in `load_round_pool`.
+# --------------------------------------------------------------------------
+
+class NoSuchStudent(Exception):
+    """The roll number a student asked to be clubbed with is not on file."""
+
+
+def upsert_roommate_request(
+    connection_string: str, round_id: str, requester_id: str, addressee_roll: str
+) -> dict:
+    """Ask `addressee_roll` to be clubbed with. Replaces any earlier ask.
+
+    Asking again resets the status to pending, including after a refusal:
+    students change their minds, and the row is per round anyway.
+    """
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "select id, name, roll_no from students where roll_no = %s and role = 'student'",
+            (addressee_roll,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise NoSuchStudent(f"no student with roll number {addressee_roll}")
+        addressee_id, name, roll_no = row
+        if str(addressee_id) == str(requester_id):
+            raise ValueError("you cannot club with yourself")
+
+        cur.execute(
+            """
+            insert into roommate_requests (round_id, requester_id, addressee_id, status)
+            values (%s, %s, %s, 'pending')
+            on conflict (round_id, requester_id) do update
+                set addressee_id = excluded.addressee_id,
+                    status = 'pending',
+                    created_at = now(),
+                    responded_at = null
+            returning id, status
+            """,
+            (round_id, requester_id, addressee_id),
+        )
+        request_id, status = cur.fetchone()
+        conn.commit()
+    return {
+        "id": str(request_id), "status": status,
+        "rollNo": roll_no, "name": name,
+    }
+
+
+def withdraw_roommate_request(connection_string: str, round_id: str, requester_id: str) -> bool:
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            update roommate_requests set status = 'withdrawn', responded_at = now()
+            where round_id = %s and requester_id = %s and status in ('pending', 'accepted')
+            """,
+            (round_id, requester_id),
+        )
+        changed = cur.rowcount
+        conn.commit()
+    return changed > 0
+
+
+def respond_to_roommate_request(
+    connection_string: str, request_id: str, addressee_id: str, accept: bool
+) -> str:
+    """Answer a request addressed to you. Only the addressee may."""
+    status = "accepted" if accept else "rejected"
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            update roommate_requests set status = %s, responded_at = now()
+            where id = %s and addressee_id = %s and status = 'pending'
+            returning round_id
+            """,
+            (status, request_id, addressee_id),
+        )
+        row = cur.fetchone()
+        conn.commit()
+    if row is None:
+        raise ValueError("no pending roommate request of yours with that id")
+    return status
+
+
+def fetch_roommate_state(connection_string: str, round_id: str, student_id: str) -> dict:
+    """Both sides of the pairing for one student: the ask they have made,
+    and the asks waiting on them -- the notifications the student page
+    shows. One query; the two halves are independent."""
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            select
+              rr.id, rr.status, rr.created_at,
+              rr.requester_id = %(me)s as outgoing,
+              other.roll_no, other.name
+            from roommate_requests rr
+            join students other
+              on other.id = case when rr.requester_id = %(me)s
+                                 then rr.addressee_id else rr.requester_id end
+            where rr.round_id = %(round)s
+              and (rr.requester_id = %(me)s
+                   or (rr.addressee_id = %(me)s and rr.status = 'pending'))
+            order by rr.created_at desc
+            """,
+            {"me": student_id, "round": round_id},
+        )
+        rows = cur.fetchall()
+
+    outgoing, incoming = None, []
+    for request_id, status, created_at, is_outgoing, roll_no, name in rows:
+        item = {
+            "id": str(request_id), "status": status,
+            "rollNo": roll_no, "name": name, "createdAt": created_at,
+        }
+        if is_outgoing:
+            if outgoing is None:
+                outgoing = item
+        else:
+            incoming.append(item)
+    return {"outgoing": outgoing, "incoming": incoming}
+
+
 def fetch_preferences(connection_string: str, student_id: str, round_id: str) -> list[dict]:
     with _pool(connection_string).connection() as conn, conn.cursor() as cur:
         cur.execute(
@@ -624,15 +751,28 @@ def load_round_pool(connection_string: str, round_id: str) -> RoundPool:
             held.append(slot_key[str(slot_id)])
             student_uuid[roll_no] = str(uid)
 
+        # A roommate pairing counts only once the other student has
+        # accepted it, so stored 'roommate' rows are ignored and the
+        # accepted requests are unioned in instead. A pairing that is
+        # pending, refused or withdrawn simply is not scored, which is
+        # what makes an unanswered ask harmless rather than a wish the
+        # matcher chases on one student's word.
         cur.execute(
             """
             select s.roll_no, p.criterion, p.value, p.weight, p.hard
             from preferences p
             join preference_sets ps on ps.id = p.preference_set_id
             join students s on s.id = ps.student_id
-            where ps.active and ps.round_id = %s
+            where ps.active and ps.round_id = %(round)s
+              and p.criterion <> 'roommate'
+            union all
+            select requester.roll_no, 'roommate'::criterion, addressee.roll_no, 1.0, false
+            from roommate_requests rr
+            join students requester on requester.id = rr.requester_id
+            join students addressee on addressee.id = rr.addressee_id
+            where rr.round_id = %(round)s and rr.status = 'accepted'
             """,
-            (round_id,),
+            {"round": round_id},
         )
         wishes: dict[str, list[Preference]] = {s.id: [] for s in students}
         for roll_no, criterion, raw, weight, hard in cur.fetchall():
@@ -948,6 +1088,46 @@ def insert_allocations(connection_string: str, allocations: list[tuple[str, str,
             allocations,
         )
         conn.commit()
+
+
+def fetch_round_summary(connection_string: str, round_id: str) -> dict | None:
+    """Counts an admin needs to judge a round at a glance, in one query.
+
+    Enrolment and priorities are what the round has to work with;
+    options and proposals are what it produced.
+    """
+    with _pool(connection_string).connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            select
+              r.status,
+              (select count(*) from round_enrollments e
+                 where e.round_id = r.id and e.enrolled) as enrolled,
+              (select count(distinct ps.student_id) from preference_sets ps
+                 where ps.round_id = r.id and ps.active) as prioritised,
+              (select count(distinct o.chain_no) from round_chain_options o
+                 where o.round_id = r.id) as chains,
+              (select count(distinct o.student_id) from round_chain_options o
+                 where o.round_id = r.id) as with_options,
+              (select count(*) from swap_proposals p
+                 where p.round_id = r.id) as proposals,
+              (select count(*) from swap_proposals p
+                 where p.round_id = r.id and p.status = 'proposed') as awaiting,
+              (select count(*) from swap_proposals p
+                 where p.round_id = r.id and p.status = 'executed') as executed
+            from swap_rounds r where r.id = %s
+            """,
+            (round_id,),
+        )
+        row = cur.fetchone()
+    if row is None:
+        return None
+    status, enrolled, prioritised, chains, with_options, proposals, awaiting, executed = row
+    return {
+        "status": status, "enrolled": enrolled, "prioritised": prioritised,
+        "chains": chains, "withOptions": with_options, "proposals": proposals,
+        "awaiting": awaiting, "executed": executed,
+    }
 
 
 def fetch_round_proposals(connection_string: str, round_id: str) -> list[dict]:
