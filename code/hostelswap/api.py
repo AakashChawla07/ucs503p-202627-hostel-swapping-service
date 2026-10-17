@@ -1,6 +1,7 @@
 """Web API for the swap matcher."""
 
 import logging
+import os
 from pathlib import Path
 from statistics import fmean
 
