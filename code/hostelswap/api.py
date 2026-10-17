@@ -228,6 +228,7 @@ def login(body: LoginBody, response: Response):
     db.create_session(connection, token, student["id"], auth.session_expiry())
     response.set_cookie(
         auth.COOKIE_NAME, token, httponly=True, samesite="lax",
+        secure=os.getenv("COOKIE_SECURE", "false").lower() == "true",
         max_age=int(auth.SESSION_LIFETIME.total_seconds()),
     )
     return {"role": student["role"], "name": student["name"], "rollNo": student["roll_no"]}
