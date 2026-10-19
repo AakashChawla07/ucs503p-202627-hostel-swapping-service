@@ -44,3 +44,32 @@ def test_stored_text_is_converted_back_to_its_type(criterion, raw, expected):
     # Preferences are stored as text in Postgres; a floor must come back
     # as an int or scoring silently never matches.
     assert db._value(criterion, raw) == expected
+
+
+def test_production_without_a_database_refuses_to_start(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+
+    with pytest.raises(db.DatabaseNotConfigured):
+        db.require_dsn_in_production()
+
+
+def test_production_never_serves_the_demo_cohort(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+
+    with pytest.raises(db.DatabaseNotConfigured):
+        current_pool()
+
+
+def test_production_with_a_database_starts(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://from-environment")
+
+    db.require_dsn_in_production()
+
+
+def test_app_env_is_read_from_the_env_file(monkeypatch, tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("APP_ENV=production\n")
+    monkeypatch.setattr(db, "ENV_FILE", env)
+
+    assert db.is_production()

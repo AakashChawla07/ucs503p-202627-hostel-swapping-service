@@ -28,22 +28,52 @@ from .domain.preferences import Criterion, Preference, PreferenceSet
 ENV_FILE = pathlib.Path(__file__).resolve().parents[2] / ".env"
 
 
+def _setting(name: str) -> str | None:
+    """A setting from the environment, else from the .env at the repo root.
+
+    Empty values count as unset, so `DATABASE_URL=` in .env means "none".
+    """
+    from_env = os.environ.get(name)
+    if from_env:
+        return from_env
+    if ENV_FILE.exists():
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith(f"{name}="):
+                value = line.split("=", 1)[1].strip().strip('"').strip("'")
+                if value:
+                    return value
+    return None
+
+
 def dsn() -> str | None:
     """Connection string, or None when no database is configured.
 
     Checks the environment first, then a .env file at the repo root, so
     running `uvicorn` needs no extra setup.
     """
-    from_env = os.environ.get("DATABASE_URL")
-    if from_env:
-        return from_env
-    if ENV_FILE.exists():
-        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
-            if line.strip().startswith("DATABASE_URL="):
-                value = line.split("=", 1)[1].strip().strip('"').strip("'")
-                if value:
-                    return value
-    return None
+    return _setting("DATABASE_URL")
+
+
+def is_production() -> bool:
+    """True when APP_ENV=production. Production never serves demo data."""
+    return (_setting("APP_ENV") or "").lower() == "production"
+
+
+class DatabaseNotConfigured(RuntimeError):
+    pass
+
+
+def require_dsn_in_production() -> None:
+    """Refuse to run in production without a database.
+
+    Without this, a missing or mistyped DATABASE_URL on the server makes
+    the app quietly fall back to the hardcoded demo cohort.
+    """
+    if is_production() and not dsn():
+        raise DatabaseNotConfigured(
+            "APP_ENV=production but DATABASE_URL is not set; "
+            "refusing to fall back to the demo cohort"
+        )
 
 
 # A fresh connection to the Supabase pooler takes roughly a second just to

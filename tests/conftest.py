@@ -16,10 +16,12 @@ from hostelswap import db
 _NO_ENV_FILE = pathlib.Path("does-not-exist.env")
 
 os.environ.pop("DATABASE_URL", None)
+os.environ.pop("APP_ENV", None)
 db.ENV_FILE = _NO_ENV_FILE
 
 
 @pytest.fixture(autouse=True)
 def no_database(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("APP_ENV", raising=False)
     monkeypatch.setattr(db, "ENV_FILE", _NO_ENV_FILE)

@@ -1,6 +1,7 @@
 """Web API for the swap matcher."""
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 from statistics import fmean
 
@@ -25,7 +26,15 @@ logging.basicConfig(
     level=logging.INFO, format="%(levelname)s:     %(message)s"
 )
 
-app = FastAPI(title="Hostel Swap")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Crash the worker at boot (systemd shows it) rather than serve demo
+    # data to real students because the server's .env is wrong.
+    db.require_dsn_in_production()
+    yield
+
+
+app = FastAPI(title="Hostel Swap", lifespan=lifespan)
 
 # The web UI is a built React bundle. `webui/` is checked in, so the
 # server needs no Node toolchain to run; rebuild it with
@@ -119,6 +128,7 @@ def current_pool():
     connection = db.dsn()
     if connection:
         return db.load_pool(connection), "postgres"
+    db.require_dsn_in_production()
     return build_pool(), "hardcoded table"
 
 
