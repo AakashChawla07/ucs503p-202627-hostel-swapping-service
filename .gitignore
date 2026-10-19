@@ -468,3 +468,12 @@ TSWLatexianTemp*
  
 # macOS
 .DS_Store
+.dual-graph/
+
+# Frontend build inputs; the built bundle in code/hostelswap/webui/ is
+# committed so the server runs without a Node toolchain.
+frontend/node_modules/
+
+# Private keys (e.g. the EC2 SSH key) never belong in the repo.
+*.pem
+*.key
