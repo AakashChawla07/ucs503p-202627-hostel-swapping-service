@@ -1,5 +1,5 @@
--- Hostel swap service schema.
--- Run this once in the Supabase SQL editor.
+-- Hostel swap service schema: baseline migration.
+-- Apply with `python db/migrate.py`, never by hand in the SQL editor.
 
 create type direction as enum ('N', 'S', 'E', 'W');
 
@@ -96,6 +96,26 @@ create table round_enrollments (
     updated_at  timestamptz not null default now(),
     unique (round_id, student_id)
 );
+
+-- roommate_requests -- a roommate preference only counts if the other
+-- student agrees to it, so the pairing is a request they answer rather
+-- than something one student can assert about another. One live request
+-- per student per round: asking someone else replaces the old ask.
+create table roommate_requests (
+    id            uuid primary key default gen_random_uuid(),
+    round_id      uuid not null references swap_rounds(id),
+    requester_id  uuid not null references students(id),
+    addressee_id  uuid not null references students(id),
+    status        text not null default 'pending'
+                  check (status in ('pending', 'accepted', 'rejected', 'withdrawn')),
+    created_at    timestamptz not null default now(),
+    responded_at  timestamptz,
+    check (requester_id <> addressee_id),
+    unique (round_id, requester_id)
+);
+
+create index roommate_requests_addressee_idx
+    on roommate_requests (addressee_id, status);
 
 -- 4. bed_slots -- the unit of assignment; a triple room has three rows here
 create table bed_slots (
