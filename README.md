@@ -12,7 +12,7 @@ kind rather than a single ranked list.
 code/hostelswap/domain   matching engine, no framework or db imports
 code/hostelswap/synth    synthetic pools for demos and benchmarks
 code/hostelswap/api.py   fastapi app
-db/schema.sql            supabase schema
+db/migrations/           schema, as numbered migrations (python db/migrate.py)
 tests/                   pytest suite
 docs/                    mkdocs site, published from master
 journals/                weekly journals, one folder per member
@@ -32,6 +32,22 @@ pytest -q
 ``` shell
 uvicorn hostelswap.api:app --reload
 ```
+
+Without `DATABASE_URL` the app serves a hardcoded demo cohort. In
+production set `APP_ENV=production` (environment or `.env`): the app then
+refuses to start without a database instead of serving demo data.
+
+## Database
+
+Put `DATABASE_URL` in `.env` (see `.env.example`), then:
+
+``` shell
+python db/migrate.py            # apply pending migrations
+python db/migrate.py --status   # see what is applied
+```
+
+A schema change is a new file `db/migrations/NNNN_description.sql`;
+never edit a migration that has already been applied anywhere.
 
 ## Docs
 
